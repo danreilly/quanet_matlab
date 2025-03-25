@@ -109,7 +109,7 @@ function p2
   fsamp_Hz = 1.233333333e9;
 
   l=size(m,1);
-  fprintf('num raw samples %d\n', l);
+  fprintf('num raw samples %d = %d ksamp = %s\n', l, l/1024, uio.dur(l/fsamp_Hz));
   t_ms = 1e3*(0:(l-1)).'/fsamp_Hz;
 
   a1=double(m(:,1));
@@ -281,10 +281,10 @@ function p2
     end
 
     
-    if (freqs_l && (pds_l==1))
+    if ((freqs_l>1) && (pds_l==1))
       
       offs_us = offs_s*1e6;
-      offs_us(1:4)
+
       ncplot.init();
       ncplot.subplot(3,1);
 
@@ -429,8 +429,9 @@ function p2
 %	xlabel('freq (Hz)');
 %        uio.pause(); 
       else
-          'PHASE VS TIME FIND LOST DATA'
+          
         % Plot fft phase vs time
+        'PHASE VS TIME FIND LOST DATA'
 	ncplot.subplot();
 	deg = util.mod_unwrap(fft_phs_rad*180/pi,360);
 	[mxv mxi]=max(abs(diff(deg)));
@@ -445,8 +446,8 @@ function p2
         % Look for lost data
         ncplot.subplot();
 	
-				% largest phase step
-	if (0)
+	% largest phase step
+	if (1)
         at_us = offs_us(mxi);
         fprintf('anomoly time %g us\n', at_us);
         fprintf('        jump %g deg\n', mxv);
@@ -457,18 +458,21 @@ function p2
         plot((rng-1).'/fsamp_Hz*1e6, a1(rng), '.');
         plot([1 1]*at_us, [-1 1]*2000,'-','Color','red');
         end
-	
+
+	if (0)
 	% largest freq step
         [mxv mxi]=max(abs(diff(freqs_Hz)));
         mxi=mxi+1;
         at_us = offs_us(mxi);
-        fprintf('anomoly time %g us\n', at_us);
-        fprintf('        jump %g deg\n', mxv);
+        fprintf('largest freq step %g Hz\n', mxv);
+        fprintf('             time %g us\n', at_us);
         idxs = round( (offs_us(mxi) + [-2 2]*pd_us )/1e6 * fsamp_Hz);
+        idxs
         rng = idxs(1):idxs(2);
         plot((rng-1).'/fsamp_Hz*1e6, a1(rng), '.');
         plot([1 1]*at_us, [-1 1]*2000,'-','Color','red');
-      
+        end
+        
 	% largest change in signal (works for slow sin)
 	if (0)
         [mxv mxi]=max(abs(diff(a1)));      
