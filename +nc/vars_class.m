@@ -815,16 +815,30 @@ classdef vars_class < handle
           end
           [pname fname ext] = fileparts(str);
           fprintf('prior %s file:\n  %s\n', desc, str);
-          fprintf('use it?');
+          c=nc.uio.ask_choice('use it (y), use the next one (x) or choose (n)', 'ynx', 'y');
+          if (c=='x')
+            [n is ie] = nc.fileutils.num_in_fname(fname);
+            if (ie>0)
+              places = ie-is+1;
+              fmt = ['%s%0' num2str(places) 'd%s'];
+              fn2 = sprintf(fmt, fname(1:is-1), n+1, fname(ie+1:end));
+              fn_full = fullfile(pname, [fn2 ext]);
+            else
+              fn_full='';                
+            end
+          end
         else
           fprintf('prior %s files:\n', desc);
           [pname f e] = fileparts(fn_full{1});
           for(k=1:length(fn_full))
             fprintf('  %s\n', fn_full{k});
           end
-          fprintf('use them?');
+          c=nc.uio.ask_choice('use them (y), or choose (n)', 'ynx', 'y');
+          if (c=='x')
+            n='n';
+          end
         end
-        if (~nc.uio.ask_yn(1))
+        if (c=='n')
           fn_full='';
         end
       end

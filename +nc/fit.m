@@ -239,7 +239,7 @@ end
         [co,ch,cq]=ncplot.colors();
       end
 
-      if (0) % dbg)
+      if (dbg)
         h = figure;
         ncplot.init();
         plot(x, y, '.');
@@ -247,6 +247,7 @@ end
         line([min(x) max(x)], [1 1]*y_off, 'Color', 'red');
 	% ncplot.txt(sprintf('guess o = %g', y_off));
         uio.pause;
+        size(y)
         delete(h);
       end
       y = y - y_off;
@@ -260,7 +261,8 @@ end
       end
       y = y/ysum;
 
-      
+
+      choice ='a';
 
 
       a = max(y);
@@ -279,13 +281,34 @@ end
         g = fwhm/2;
       else % try to figure it out
         th = opt.init_y_thresh;
-        while(1)
-          idxs = find(y>th*a); % sub-fit to upper part of y
-          if (length(idxs) >= min(10, (l/2)))
+        min_pts = min(10, ceil(l/2)); % min points reqd for fit
+        if (length(find(y>=0)) < min_pts)
+          my=min(y);
+          % fprintf('len y %d  minpts %d  miny %g\n', length(y), min_pts, my);
+          th = 0;
+          for itr=1:3
+            [mxv mxi] = max((y<th).*(y-my));
+            % fprintf('  max %g at %d\n', mxv+my, mxi);
+            th = mxv+my; % largest y value below old th
+            idxs = find(y>=th); % sub-fit to upper part of y
+            if (length(idxs) >= min_pts)
               break;
+            end
           end
-          th = th * .9; % lower the threshold
-        end        
+        else
+          for itr=1:50
+            idxs = find(y>=th*a); % sub-fit to upper part of y
+            if (length(idxs) >= min_pts)
+              break;
+            end
+            th = th * .9; % lower the threshold
+          end
+        end
+        % let x'=(x-m).^2, and suppose o=0.
+        % Then lorentz = a*g./(pi*(x'+g^2))
+        % we take the slope of the log of the lorentzian
+        % d/dx'(log(lorentz))=d/dx'(log(a*g/pi)-log(x'+g^2))
+        % = -1/(x'+g^2), and at x'=0, this is -1/g^2
         sf_x = (x(idxs)-m).^2;
         sf_y = log(y(idxs));
         sf_l = length(idxs);
@@ -311,26 +334,26 @@ end
         % The half-height half-width of a ??? is:
         fwhm = sqrt(-log(0.5)*2*s^2);
 
-        if (opt.dbg)
+        if (opt.dbg && (choice ~='e'))
             h = figure;
 	    ncplot.init;
             [co,ch,cq]=ncplot.colors();            
 	    ncplot.subplot(2,1);
 	    ncplot.subplot;
 	    plot(x,y,'.', 'Color', cq(1,:));
-            hold('on');
-	      plot(x(idxs),y(idxs),'.','Color','green');
-	      ncplot.txt(sprintf('a %g', a));
-	      ncplot.txt(sprintf('m %g', m));
-	      ncplot.txt(sprintf('upper %d% in green',100*opt.init_y_thresh));
-	      ncplot.title({'nc.fit.lorentzian.m: DEBUG';
-		            'normalized points above thresh 0.20';
-		            'used to determin initial STD estimate'});
-	      xlabel('x');
-	      xlabel('y (norm)');
+            %hold('on');
+	    plot(x(idxs),y(idxs),'.','Color','green');
+	    ncplot.txt(sprintf('a %g', a));
+	    ncplot.txt(sprintf('m %g', m));
+	    ncplot.txt(sprintf('above %d%% in green',100*opt.init_y_thresh));
+	    ncplot.title({'nc.fit.lorentzian.m: DEBUG';
+	            'normalized points above thresh 0.20';
+	                  'used to determin initial STD estimate'});
+	    xlabel('x');
+	    xlabel('y (norm)');
 
-	      ncplot.subplot;
-	      plot(sf_x, sf_y, '.');
+	    ncplot.subplot;
+	    plot(sf_x, sf_y, '.');
 	      hold('on');
 	      xx=[min(sf_x) max(sf_x)];
 	      yy=polyval(p, xx);
@@ -342,13 +365,11 @@ end
 	      ncplot.title({'nc.fit.lorentzian.m: DEBUG';
 		            'initial STD estimate';
 		            'comes from the slope of this'});
-	      uio.pause();
+              choice = uio.ask_choice('again or skip to end', 'ae', 'a');
               delete(h)
           end
           g = (fwhm/2);
       end
-      
-
 
 
       % If we assume we know m and g, we can calc the best a and o:
@@ -379,6 +400,7 @@ end
       rec = zeros(opt.maxiter,5);
    
       % param matrix is p=[dm ds].'
+      choice ='a';
       itr=0;
       while(itr<opt.maxiter)
 
@@ -399,7 +421,7 @@ end
 	done = (mse<1e-16);
 	nochange = ((itr>4)&&(abs(mse-mse_pre)<1e-10));
         
-	if (opt.dbg)
+	if (opt.dbg && (choice ~='e'))
 	  ncplot.init();
 	  plot(x, [y fit], '.');
 	  xlim([min(x) max(x)]);
@@ -416,35 +438,69 @@ end
 	  %      plot_txt(sprintf(' deltas [%g %g %g]', p(1),p(2),p(3)));
 	  ncplot.title({'nc.fit.lorentzian.m: DEBUG';
 			'iterative step of fitting'});
-	  uio.pause;
+          choice = uio.ask_choice('FITL: again or skip to end', 'ae', 'a');          
 	end
 
 	if (done || nochange)
 	  break;
 	end
 
-        % try mot change m the same time as g
-        
+        % just vary width and mid.
+        % Keep height the same, that is, a = k*g.
+        k = a/g;
+        % G = g^2;  d = [df/dm df/dG]
+        tmp = (x-m).^2+g^2;
+        d = [(fit-o)*2.*(x-m)./tmp ...
+             (fit-o)/g^2 - (fit-o)./tmp];
 
-        d = [(fit-o)/a  ...
-             (fit-o)*2.*(x-m)./((x-m).^2+g^2)];% ...
-                                               %            -(fit-o).*(1/g + 2*g./((x-m).^2+g^2))/opt.gscale ];
-        mm = (d.'*wd2*d);
-	rc = rcond(mm);
-	if (rc>1e-15)
-  	    p = mm\(d.'*wd2*-err);
-	    a = a+p(1);
-	    m = m+p(2);
-            %        g = g+p(3)/opt.gscale; % change more slowly
-            %	o = o+p(3);
-	end
+        %        % try not change m the same time as g
+        %        d = [(fit-o)/a  ...
+        %             (fit-o)*2.*(x-m)./((x-m).^2+g^2)];% ...
+        %            -(fit-o).*(1/g + 2*g./((x-m).^2+g^2))/opt.gscale ];
+
         
-        d =     -(fit-o).*(1/g + 2*g./((x-m).^2+g^2))/opt.gscale;
         mm = (d.'*wd2*d);
 	rc = rcond(mm);
 	if (rc>1e-15)
   	  p = mm\(d.'*wd2*-err);
-	  g = g+p(1);
+	  m = m+p(1);
+	  g = g+p(2)/(2*g);
+          a = g*k;
+	end
+
+	if (opt.dbg && (choice ~='e'))
+	  ncplot.init();
+	  plot(x, [y fit], '.');
+	  xlim([min(x) max(x)]);
+	  ylim([min(y) max(y)]);
+	  ncplot.txt(sprintf(' iter %d', itr));
+	  ncplot.txt(sprintf(' a m g o [%g %g %g %g]', a, m, g, o));
+	  ncplot.txt(sprintf(' rmse %g', sqrt(mse)));
+	  if (done)
+            ncplot.txt(sprintf(' close enough! done.'));
+	  end
+	  if (nochange)
+            ncplot.txt(sprintf(' not changing! done.'));
+	  end
+	  %      plot_txt(sprintf(' deltas [%g %g %g]', p(1),p(2),p(3)));
+	  ncplot.title({'nc.fit.lorentzian.m: DEBUG';
+			'iterative step of fitting'});
+          choice = uio.ask_choice('FITL: again or skip to end', 'ae', 'a');          
+	end
+
+        
+        if (1)
+          % Now solve a and o
+          % d = [df/da df/do]
+          % solve d*p ~= y
+          d  = [g./((x-m).^2+g^2) ones(l,1)];
+          mm = (d.'*wd2*d);
+  	  rc = rcond(mm);
+	  if (rc>1e-15)
+            p = mm\(d.' * wd2 * y);              
+  	    a = p(1);
+	    o = p(2);
+          end
         end
         
 	mse_pre=mse;	      
@@ -555,10 +611,13 @@ end
       dbg = opt.dbg;
       if (dbg)
         fprintf('WARN: nc.fit.lorentzian() called with opt.dbg=1\n');
+        opt
+        size(x)
+        size(y)
         [co,ch,cq]=ncplot.colors();
       end
 
-      if (0) % dbg)
+      if (dbg)
         h = figure;
         ncplot.init();
         plot(x, y, '.');

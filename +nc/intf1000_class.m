@@ -337,6 +337,19 @@ classdef intf1000_class < handle
       me.ser.do_cmd('e');
     end    
 
+    function set_voa_attn_dB(me, chan, atten_dB)
+    % for use by calibration software.
+      me.ser.do_cmd('s');
+      me.ser.do_cmd('V');        
+      me.ser.do_cmd(sprintf('%d\r', chan));
+      me.ser.do_cmd('w');
+      [m err]=me.ser.do_cmd_get_matrix([num2str(atten_dB) 13]);
+        me.ser.do_cmd('e');
+      if (~err && (length(m)==1))
+        me.settings.atten_dB(chan) = m;
+      end
+    end
+    
     function set_fdbk_goal(me, goal_deg)
       fprintf('WARN: intf1000_class.set_fdbk_goal deprecated.  Use set_phase_deg\n');
       me.ser.do_cmd('s');

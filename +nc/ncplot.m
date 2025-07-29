@@ -419,6 +419,7 @@ classdef ncplot
       m=max(xf(2:end));
       idx=find(m==xf(2:end))+1;
 
+      res.f_r   = f_r;
       res.x_Hz  = fft_i(2:end);
       res.y_dBc = xf(2:end);    
       res.main_freq_idx = idx-1;
@@ -429,6 +430,67 @@ classdef ncplot
         
     end
 
+    function iq(x, y, opt)
+      import nc.*
+      if (nargin<3)
+        opt.markersize=6;
+      end
+      cq = nc.ncplot.colors_qtr();
+      opt = util.set_field_if_undef(opt, 'color', cq(1,:));
+      plot(x,y,'.','Markersize',opt.markersize,'Color',opt.color);
+      mx=max([abs(x);abs(y)]);
+      xlim([-mx mx]);
+      ylim([-mx mx]);
+      line([0 0],[-1 1]*mx,'Color','green');
+      line([-1 1]*mx,[0 0],'Color','green');
+      set(gca,'PlotBoxAspectRatio', [1 1 1]);
+      xlabel('I');
+      ylabel('Q');
+    end
+    
+    function eye_density(x, y, opt)
+      import nc.*
+      if (nargin<3)
+        opt.n=32;
+      end
+      opt = util.set_field_if_undef(opt, 'n', 32);
+      opt = util.set_field_if_undef(opt, 'max_std', 2);
+      r = sqrt(x.^2+y.^2);
+      r_med=median(r);
+      r_std=std(r);
+      msk=(r<r_med+opt.max_std*r_std);
+      mx=max(max(abs(x(msk))),max(abs(y(msk))));
+      sp=(2*mx)/opt.n;
+      eye=zeros(opt.n,opt.n);
+      for k=1:length(x)
+        xi=util.ifelse(x(k)==mx,opt.n,floor((x(k)+mx)/sp)+1);
+        yi=util.ifelse(y(k)==mx,1,opt.n-floor((y(k)+mx)/sp));
+        % fprintf('%d %d\n', xi, yi);
+        if ((xi>0)&&(xi<=opt.n)&&(yi>0)&&(yi<=opt.n))
+          eye(yi,xi)=eye(yi,xi)+1;
+        end
+      end
+      eye = max(0,log10(10*eye+0.1));
+      eye=floor(eye*63/max(eye(:)))+1;
+      colormap(bone);
+      image(eye); % 'Cdata', c);
+      xlim([.5 opt.n+.5]);
+      ylim([.5 opt.n+.5]);
+      ntic=4;
+      tics=linspace(.5, opt.n+.5, 5);
+      ticlbls=cell(1, opt.n);
+      yticlbls=cell(1, opt.n);
+      m=(opt.n+1)/2;
+      for k=1:length(tics)
+        ticlbls{k}=sprintf('%d',round((tics(k)-m)*mx/(opt.n/2)));
+        yticlbls{k}=sprintf('%d',round(-(tics(k)-m)*mx/(opt.n/2)));
+      end
+      set(gca, 'XTick', tics, 'XTickLabel', ticlbls, ...
+               'YTick', tics, 'YTickLabel', yticlbls, ...
+               'YDir','reverse', ...
+               'PlotBoxAspectRatio', [1 1 1]);
+    end
+    
   end % static methods
   
 end  

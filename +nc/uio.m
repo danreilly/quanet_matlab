@@ -31,7 +31,7 @@ classdef uio
 	msg='hit enter';
       end
       fprintf('%s >', msg);
-      pause;
+      str = input('', 's');
       fprintf('\n');
     end
 

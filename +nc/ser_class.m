@@ -1473,13 +1473,14 @@ classdef ser_class < handle
     %     me.cmd_nchar
     % returns:
     %     err: 0=ok, 1=missing rsp_need, 2=missing rsp_err, 3=missing '>'
+    %          4=max chars exceeded        
     %     rsp: response as a string
       import nc.*                                   
      
       err=0;
       errmsg='';
 
-      [rsp , ~, to] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
+      [rsp, found_key, to] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
       
       if (logical(to))
         if (logical(me.dbg))
@@ -1493,6 +1494,24 @@ classdef ser_class < handle
         err=3;
       end
 
+      if (~to && ~found_key && (me.cmd_nchar>0))
+        fprintf('WARN: ser_class.get_cmd_rsp() read max char %d on port %s\n', ...
+                  me.cmd_nchar, me.dbg_alias);
+        fprintf('     cmd was: ');
+        uio.print_all(cmd);
+        fprintf('     end of rsp: ');
+        uio.print_all(rsp(max(1,end-100):end));
+        err=4;
+      end
+
+      
+      %      fprintf('     cmd was: ');
+      %      uio.print_all(cmd);
+      %      fprintf('     end of rsp: ');
+      %      fprintf('     found key %d   met timo %d  err %d\n', found_key, to, err);
+      %      uio.print_all(rsp(max(1,end-100):end));
+
+      
 
       for k=1:length(me.bridge_objs)
         rsp = me.bridge_objs(k).bridge_rsp(me.bridge_chans(k), rsp);
@@ -1545,6 +1564,9 @@ classdef ser_class < handle
     function [m, err] = do_cmd_get_matrix(me, cmd, dflt)
       % inputs:
       %   dflt: default value if could not parse a matrix
+    % returns:
+    %     err: 0=ok, 1=returned size <> size of dflt if dflt provided,
+    %          3=missing '>'
       [rsp, err] = do_cmd(me, cmd);
       m=me.parse_matrix(rsp);
       if (nargin>2)

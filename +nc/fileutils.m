@@ -113,10 +113,10 @@ classdef fileutils
       fname = fname_in;
       fn = fullfile(path, fname);
 
-      [n is ie] = num_in_fname(fname_in);
+      [n is ie] = fileutils.num_in_fname(fname_in);
       if (ie>0)
-        fname_pre  = fname_in(ie+1:end);
-        fname_post = fname_in(1:is-1);
+        fname_pre  = fname_in(1:is-1);
+        fname_post = fname_in(ie+1:end);
         places = ie-is+1;
       else
         idx=strfind(fname_in,'.');

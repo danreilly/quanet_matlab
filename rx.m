@@ -1,6 +1,9 @@
-function p(arg)
+function rx(arg)
   import nc.*
-  mname='p.m';
+  mname='rx.m';
+
+  %  lfsr0 = lfsr_class(hex2dec('25'), hex2dec('0a')); % cp 100101  rst_st  001010
+  %  lfsr0.gen(16)
 
   opt_show=1;
   h_JpHz = 6.62607e-34;
@@ -14,7 +17,7 @@ function p(arg)
       opt_fnum = v;
     end
   end
-  
+
   tvars = nc.vars_class('tvars.txt');
  
   fname='';
@@ -46,21 +49,35 @@ function p(arg)
       end
     end
   end
+  
+  
   if (isempty(fname))  
     fname = tvars.ask_fname('data file', dflt_fname_var);
   end
+%^  pname = fileparts(fname);
+%  pname_pre = fileparts(pname);
+  %  if (~strcmp(pname, pname_pre))
+  %   'new dir'
+    % tvars.set('max_fnum', 0);
+    %  end
   tvars.save();
 
 
   
   fname_s = fileutils.fname_relative(fname,'log');
+  if (1)
+    mvars = nc.vars_class(fname);
+    use_lfsr = mvars.get('use_lfsr',1);
+    num_itr  = mvars.get('num_itr',1);
+    
+  alice_txing = mvars.get('alice_txing',0);
+  if (~alice_txing)
+    uio.pause('ERR: alice was not txing in this file\n');
+    
+  end
 
-
-  mvars = nc.vars_class(fname);
-
-
-  other_file = mvars.get('data_in_other_file',0);
-  if (other_file==2)
+    other_file = mvars.get('data_in_other_file',0);
+    if (other_file==2)
       s = fileutils.nopath(fname);
       s(1)='d';
       s=fileutils.replext(s,'.raw');
@@ -86,6 +103,8 @@ function p(arg)
         end
       end
       aug = reshape(aug,8,[]);
+      fprintf('DBG: num aug0 %d\n', sum(aug(1,:)));
+      fprintf('DBG: num aug1 %d\n', sum(aug(2,:)));
       aug0=repmat(aug(1,:),4,1);
       aug0=aug0(:);
       aug1=repmat(aug(2,:),4,1);
@@ -100,6 +119,25 @@ function p(arg)
       aug5=aug5(:);
 
 
+
+      
+
+      
+
+      if (uio.ask_yn('gen hex for sim',0))
+        s=fileutils.replext(s,'.hex');
+        fname3=[fileutils.path(fname) '\' s];
+        fprintf(' %s\n', fname3);
+        fid=fopen(fname3,'w','l','US-ASCII');
+        if (fid<0)
+          fprintf('ERR: cant open %s\n', fname3);
+        end
+        for k=1:length(m)
+          fprintf(fid, '%04x', util.ifelse(m(k)>=0, m(k), 2^16+m(k)));
+        end
+        fclose(fid);
+        % class(m) is double
+      end
        
       
       m = reshape(m, 2, cnt/2).';
@@ -116,26 +154,34 @@ function p(arg)
       fclose(fid);
       m = reshape(m, 2,cnt/2).';
 
-  else
+    else
       m = mvars.get('data');
+    end
+  else
+    fid=fopen(fname,'r');
+    [m cnt] = fscanf(fid, '%g');
+    fclose(fid);
+    m = reshape(m, 2,cnt/2).';
+    %  frame_pd_samps = 3700;
+    frame_pd_asamps = 2464;
+    hdr_len_bits  = 64;
   end
+  tvars.save();  
+
+  use_lfsr = 1;
 
   
 
 
-
-
   
-  use_lfsr = mvars.get('use_lfsr',1);
-  num_itr  = mvars.get('num_itr',1);
+  tx_same_hdrs = 1;
   
-  tx_same_hdrs = mvars.get('rx_same_hdrs',[]);
-  if (isempty(tx_same_hdrs))
-    tx_same_hdrs = mvars.get('tx_same_hdrs',0);
-  end
   fprintf('rx same hdrs %d\n', tx_same_hdrs);
   
   tx_0 = mvars.get('tx_0',0);
+  if (tx_0)
+    do_eye=1;
+  end
   
   frame_pd_asamps = mvars.get('frame_pd_asamps', 0);
   if (~frame_pd_asamps)
@@ -145,11 +191,9 @@ function p(arg)
     frame_pd_asamps = mvars.get('probe_pd_samps', 2464); % deprecated
   end
 
-  tst_sync = mvars.get('tst_sync', 0);
-  tst_sync=0;
+  tst_sync = mvars.get('tst_sync', 0);    
   is_alice = mvars.get('is_alice', 0);    
   frame_qty = mvars.get('frame_qty', 0);
-
   if (~frame_qty)    
     frame_qty = mvars.get('probe_qty', 0); % deprecated
     if (~frame_qty)    
@@ -171,10 +215,12 @@ function p(arg)
   
   hdr_len_asamps = hdr_len_bits * osamp;
 
-  asamp_Hz = mvars.get('asamp_Hz', 0);
-  if (asamp_Hz==0)
-    asamp_Hz = mvars.get('fsamp_Hz', 1.233333333e9);
-  end
+
+    
+    asamp_Hz = mvars.get('asamp_Hz', 0);
+    if (asamp_Hz==0)
+      asamp_Hz = mvars.get('fsamp_Hz', 1.233333333e9);
+    end
 
   tx_hdr_twopi = mvars.get('tx_hdr_twopi',0);
   host = mvars.get('host','');
@@ -183,9 +229,24 @@ function p(arg)
   m12=mvars.get('m12',0);
   already_balanced = ((abs(m11-1)>.001)||(abs(m12)>.001));
 
+  qsdc_data_pos_asamps = mvars.get('qsdc_data_pos_asamps',0);
+  qsdc_data_len_asamps = mvars.get('qsdc_data_len_asamps',0);
+  qsdc_code_len_cbits = mvars.get('qsdc_code_len_cbits',1);
+  qsdc_data_is_qpsk = mvars.get('qsdc_data_is_qpsk',0);
+  qsdc_symbol_len_asamps = mvars.get('qsdc_symbol_len_asamps',0);
+  bits_per_frame = qsdc_data_len_asamps/qsdc_symbol_len_asamps * (qsdc_data_is_qpsk+1);
+  fprintf('QSDC: data_pos_asamps   %d\n', qsdc_data_pos_asamps); 
+  fprintf('      data_len_asamps   %d (per frame)\n', qsdc_data_len_asamps); 
+  fprintf('      code_len_cbits    %d (per data bit)\n', qsdc_code_len_cbits);
+  fprintf('      symbol_len_asamps %d\n', qsdc_symbol_len_asamps); 
+  fprintf('      bits per frame    %d\n', bits_per_frame);
+  fprintf('      is_qpsdk          %d\n', qsdc_data_is_qpsk);
+    
+    cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
+    cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
+        cipher_symlen_asamps;
+    cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;
 
-  
-  
 
   % IQ SCATTERPLOT
   ii = m(:,1);
@@ -211,54 +272,86 @@ function p(arg)
   end
   if (already_balanced)
     ncplot.txt('rebalanced by HDL');
-  end  
+  end
+  figure(gcf());  
   %  ncplot.subplot();
   %  ncplot.invisible_axes();
+
+
+  % DETERMINE THE MESSAGE THAT WAS SENT
+  fprintf('\n(By the way, you can use gen_data.m to generate data files.)\n');
+  while(1)
+    msg_fname = tvars.ask('message file that alice txed to bob','msg_fname');
+     fid=fopen(msg_fname, 'r', 'l', 'US-ASCII');
+    if (fid<0)
+      fprintf('ERR: cant open file\n');
+      continue;
+    end
+    [data cnt] = fread(fid, 'uint8');
+    fprintf('read %s (%d bytes)\n', fname, cnt);
+    fclose(fid);
+    break;
+  end
+  % TURN IT INTO BITS
+  txed_bits=zeros(cnt,8);
+  for k = 1:cnt
+    b=flipdim(dec2bin(data(k))=='1',2);
+    txed_bits(k,1:length(b))=b;
+  end
+  txed_bits=reshape(txed_bits.',[],1); % into vert vect
+  % 'BITS'
+  % txed_bits(1:8)
+  fprintf(' num txed bits %d\n', length(txed_bits));
+
+  % ENCODE EACH BIT
+  % each bit is replaced by a code generated by one of the two generators.
+  % The number of codebits (cbits) per data bit is qsdc_code_len_cbits
+  % The codes are derived from the two irreducable polynomials of order 5
+  lfsr0 = lfsr_class(hex2dec('25'), hex2dec('0a')); % cp 100101  rst_st  001010
+  lfsr1 = lfsr_class(hex2dec('3b'), hex2dec('35')); % cp 111011  rst_st  110101
+  txed_coded = zeros(length(txed_bits), qsdc_code_len_cbits);
+  for k=1:length(txed_bits)
+    if (txed_bits(k)==0)
+      lfsr0.reset();
+      txed_coded(k,:)=lfsr0.gen(qsdc_code_len_cbits).';
+    else
+      lfsr1.reset();
+      txed_coded(k,:)=lfsr1.gen(qsdc_code_len_cbits).';
+    end
+  end
+  % 'CODED'
+  % txed_coded(1:8,:)
+  txed_coded=reshape(txed_coded.',[],1); % into ver vect
+  fprintf(' num codebitss %d\n', length(txed_coded));
+  
+  % SYMBOLIZE THE CODE BITS
+  if (qsdc_data_is_qpsk)
+    txed_syms = ([1 2] * reshape(txed_coded,2,[])).';
+  else
+    txed_syms = txed_coded;
+  end
+  % 'SYMBOLS'
+  % txed_syms(1:8)
+  sym_i = 1;
+  fprintf(' num txed symbols %d\n', length(txed_syms));
+
+  % SAMPLE THE SYMBOLS
+  txed_asamps = reshape(repmat(txed_syms.',qsdc_symbol_len_asamps,1),[],1);
+  fprintf(' num txed asamps %d\n', length(txed_asamps));
+
+  txed_frames = ceil(length(txed_asamps) / qsdc_data_len_asamps);
+  fprintf(' num txed frames %d\n\n', txed_frames);
   
 
+    find_hdr = 1;
+    calc_sweep_ang= 0;
 
-    
-    
-
-    if (uio.ask_yn('gen hex for sim',0))
-      s=fileutils.replext(s,'.hex');
-      fname3=[fileutils.path(fname) '\' s];
-      fprintf(' %s\n', fname3);
-      fid=fopen(fname3,'w','l','US-ASCII');
-      if (fid<0)
-        fprintf('ERR: cant open %s\n', fname3);
-      end
-      for k=1:length(m)
-        fprintf(fid, '%04x', util.ifelse(m(k)>=0, m(k), 2^16+m(k)));
-      end
-      fclose(fid);
-      % class(m) is double
-    end
-
-    
-    calc_sweep_ang= mvars.get('tx_mem_circ',0);
-    if (calc_sweep_ang)
-      fprintf('Calculating sweep angle because tx_mem_circ=1\n');
-      find_hdr=0;
-    else
-      find_hdr = tvars.ask_yn('find hdrs','find_hdr',0);
-      calc_sweep_ang= ~find_hdr;
-    end
     if (calc_sweep_ang)
       frame_pd_asamps = floor(frame_pd_asamps/10);
     end
+
     
-    
-  tvars.save();  
 
-
-
-
-
-
-
-
-  
   mean_pwr_dBm = mvars.get('mean_pwr_dBm', []);
   if (~isempty(mean_pwr_dBm))
     mean_pwr_dBm = mvars.ask('mean signal pwr (dB,)', 'mean_pwr_dBm', -inf);
@@ -275,10 +368,6 @@ function p(arg)
   cipher_en = mvars.get('cipher_en',0);
 
 
-  cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
-  cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
-      cipher_symlen_asamps;
-  cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;
 
   
   
@@ -286,13 +375,14 @@ function p(arg)
   
   lfsr_rst_st = mvars.get('lfsr_rst_st', '50f');
   fprintf('lfsr rst st x%s\n', lfsr_rst_st);
+  host = mvars.get('host','');
+
   lfsr = lfsr_class(hex2dec('a01'), hex2dec(lfsr_rst_st));
   lfsr_idx = 0;
   cipher_lfsr = lfsr_class(hex2dec('280001'), hex2dec('abcde'));
   % cipher_lfsr = lfsr_class(hex2dec('280001'),    hex2dec('aabbc'));
-
+  cipher = zeros(cipher_len_bits, 1);
   
-
   
   sim_hdl.do = tvars.ask_yn('simulate HDL processing', 'sim_hdl');
   if (sim_hdl.do)
@@ -303,7 +393,8 @@ function p(arg)
   tvars.save();
 
 
-
+  ii = m(:,1);
+  qq = m(:,2);
 
 
 
@@ -318,13 +409,9 @@ function p(arg)
   fprintf('fsamp = %.3f GHz\n', asamp_Hz/1e9);
   fprintf('num samples %d asamps = %d Ksamps = %s\n', l, round(l/1024), uio.dur(l/asamp_Hz));
   fprintf('num frames  %d\n', floor(l/frame_pd_asamps));
-  if (l==0)
-    fprintf('ERR: no data\n');
-    return;
-  end
 
   frame_qty = floor(l/frame_pd_asamps);
-
+  frame_qty
   % do this instead of multiplying frame_qty by two.
   
   fprintf('frame_pd    %d samps = %s\n', frame_pd_asamps, uio.dur(frame_pd_s));
@@ -337,35 +424,25 @@ function p(arg)
   iq_mx = max(max(abs(ii)),max(abs(qq)));
 
 
-  pat_base = [1,1,1,1,0,0,0,0,1,0,1,0,0,1,0,1, ...
-                      1,0,1,0,1,1,0,0,1,0,1,0,0,1,0,1, ...
-                      1,0,1,0,1,1,0,0,1,0,1,0,0,1,0,1, ...
-         0,1,0,1,0,0,1,1,0,1,0,1,1,0,1,0];
-
-  pat = repmat(pat_base,osamp,1);
-  pat = reshape(pat,[],1);
-  pat_l=length(pat);
-  pat_base = pat_base*2-1;
 
 
   method=0;
 
   if (method==1)
-    ym=(max(ii)+min(qq))/2;
-    pat = (pat-.5)*2;
-    %  ncplot.subplot();
+      ym=(max(ii)+min(qq))/2;
+      pat = (pat-.5)*2;
+%  ncplot.subplot();
     c = corr(pat, y-ym);
     tit='midpoint based';
-    % line([x(1) x(end)],[1 1]*ym,'Color','green');
-  else
+%    line([x(1) x(end)],[1 1]*ym,'Color','green');
+  elseif (0)
     pat = (pat-.5)*2;
     %    c = corr(pat, y);
     tit='RZ Correlation';
   end
 
-  ncplot.init();  
-  ncplot.subplot(1,2);
-  figure(gcf());
+
+
 
   
   filt_desc='none';
@@ -373,34 +450,24 @@ function p(arg)
   filt_len = 8;
   use_filt = 0;
   %  use_filt = tvars.ask_yn('filter ', 'use_filt', use_filt);
-
-
-
-
-
-
   
   do_eye=1;
-  if (~already_balanced)
-    calc_rebal=0;
+  tx_hdr_twopi = mvars.get('tx_hdr_twopi',0);
 
-    if (calc_rebal)
-      res = calc_rebalance(ii, qq);
-    elseif (strcmp(host,'zcu1'))
-      res.i_off = -4;
-      res.q_off = -15;
-      res.th_deg = -78.475;
-      res.i_factor = 1;
-      res.q_factor = 1.39656;
-      fprintf('using default REBAL for ZCU1\n');
-    else
-      res.i_off = -2;
-      res.q_off = -10;
-      res.th_deg = 179;
-      res.i_factor = 1;
-      res.q_factor = 1.08;
-      fprintf('using default REBAL for ZCU2\n');
-    end
+
+
+  ncplot.subplot(1,2);
+  if (~already_balanced)
+    % IQ SCATTERPLOT
+
+    calc_rebal=0;
+    res.i_off = -2;
+    res.q_off = -10;
+    res.th_deg = 179;
+    res.i_factor = 1;
+    res.q_factor = 1.08;
+    fprintf('\nusing default REBAL for ZCU2\n');
+
     i_off = res.i_off;
     q_off = res.q_off;
     th_rad=res.th_deg*pi/180;
@@ -416,135 +483,23 @@ function p(arg)
     ncplot.iq(ii,qq,iqopt);
     ncplot.txt(sprintf('qnic %s', host));
     ncplot.txt(sprintf('sqrt(<I^2+Q^2>) %.1f ADC', radius_mean));
-    if (calc_rebal)
+    
+    if (0)
+      ncplot.txt(sprintf('hdr twopi %d', mvars.get('tx_hdr_twopi',0)));
       ncplot.txt('rebalance parameters');
-      ncplot.txt(sprintf('  i_off    %d', res.i_off));
-      ncplot.txt(sprintf('  q_off    %d', res.q_off));
+      ncplot.txt(sprintf('  i_off    %d', i_off));
+      ncplot.txt(sprintf('  q_off    %d', q_off));
       ncplot.txt(sprintf('  i_factor %g', res.i_factor));
       ncplot.txt(sprintf('  q_factor %g', res.q_factor));
-      ncplot.txt(sprintf('  angle  %.1f deg', res.th_deg));
+      ncplot.txt(sprintf('  c %.1f deg', th_rad*180/pi));
       ncplot.txt(sprintf('  (radius %.1f)', radius_mean));
-    else
-      ncplot.txt(sprintf('hdr twopi %d', mvars.get('tx_hdr_twopi',0)));
     end
     %   xlim([-1.1 1.1]*mx);    ylim([-1.1 1.1]*mx);
-    ncplot.title({fname_s; 'Corrected IQ scatterplot (all samples)'});
-
-    if (calc_rebal)
-      dev_name='qnic';
-      archive_var='qnic_archive'; % variable storing path to archive
-      while(1)
-        archive_path = tvars.ask_dir(['calibration archive for ' dev_name], archive_var);
-        [f_path f_name f_ext]=fileparts(archive_path);
-        if (~strfind(f_name,'archive'));
-            fprintf('WARN: %s\n', archive);
-            fprintf('      is a non-standard calibration archive name\n');
-        end
-        if (exist(archive_path, 'dir'))
-            break;
-        end
-        fprintf('WARN: %s\n', archive_path);
-        fprintf('      doesnt exist\n');
-      end
-      [n is ie] = fileutils.num_in_fname(fname_s);      
-      datedir = fileutils.rootname(fileutils.path(fname));
-      ofname = fullfile(archive_path,host,datedir,sprintf('cal_%s_rebal_%s_%03d.txt', host, datedir, n));
-      if (exist(ofname))
-        fprintf('WARN: calibration file already exists\n');
-        fprintf('      %s\n', ofname);
-        if (~uio.ask_yn('overwrite',0))
-            ofname='';
-        end
-      end
-      if (~isempty(ofname))
-        ovars = nc.vars_class(ofname);
-        ovars.clear_vars();
-        ovars.set('filetype', 'rebal');
-        ovars.copy(mvars, {'engineer', 'host', 'serialnum', 'hwver', 'fwver'});
-        ovars.set_context;
-        ovars.set('host', host);
-        ovars.set('srcfile', fname);
-        ovars.set('i_off', res.i_off);
-        ovars.set('q_off', res.q_off);
-        ovars.set('i_fact',res.i_factor);
-        ovars.set('q_fact',res.q_factor);
-        ovars.set('ang_deg',res.th_deg);
-        ovars.save();
-        fprintf('wrote %s\n', ovars.name);
-        ncplot.txt(sprintf('wrote %s', fileutils.fname_relative(ofname,'archive')));
-      end
-    end
-    uio.pause();
-    
+    ncplot.title({fname_s; 'Corrected IQ scatterplot'});
+    uio.pause('see rebalanced IQ plot');
   end
 
 
-    
-  if (0)
-    % sinusoidal fit is poor because phase is drifting
-    ncplot.init();
-    [a b c f err_rms]  = fit.sin(qq, asamp_Hz);
-    t_s=(0:length(qq)-1)/asamp_Hz;
-    ff=    a*cos(2*pi*f*t_s) + b*sin(2*pi*f*t_s) + c;
-    plot(t_s,qq,'.','Color',coq(1,:));
-    plot(t_s,ff,'.','Color','black');
-    uio.pause();    
-  end
-
-  if (0)
-    ncplot.subplot(2,1);
-    ncplot.subplot();
-    if (0)
-      t_ms = 1e3*(0:(l-1)).'/asamp_Hz;
-      plot(t_ms,ii,'.','Color',coq(1,:));
-      plot(t_ms,qq,'.','Color',coq(2,:));
-      xlabel('time (us)');
-      y_mx = max(abs(ii));
-      ncplot.title('time series I & Q');
-      ncplot.subplot();
-    end
-
-    noise=zeros(num_itr,1);
-    l = frame_qty * frame_pd_asamps;
-    for k=1:(n-1)
-      rng = (k-1)*l + (1:l);
-      noise(k)=sqrt(mean(ii(rng).^2+qq(rng).^2));
-    end
-    itr_times_s = mvars.get('itr_times');
-    
-    plot(itr_times_s, noise,'.');
-    xlabel('time (s)');
-    ylabel('noise (ADCrms)');
-    return;
-    
-    gi = 3700; % guess
-    ncplot.subplot();
-    ncplot.title('autocorrelation');
-    c = corr2(ii(1:gi),ii((gi+1):l));
-    c_l=length(c);
-    plot(1:c_l, ii(gi+1:l), '.', 'Color',coq(1,:));
-    %    xlabel('index');
-    c = c * y_mx / max(c);
-    plot(1:c_l, c, '-','Color','red');
-    uio.pause();
-
-    pks = (c>y_mx*.9);
-    for k=length(pks):-1:2
-      if (pks(k-1)&&pks(k))
-	pks(k)=0;
-      end
-    end
-    idxs = find(pks);
-
-    ncplot.subplot();
-    d=diff(idxs);
-    plot(d,'.');
-    ylabel('difference (idx)');
-    xlabel('match');
-    
-    return;
-  end
-  
 
 
 
@@ -563,7 +518,7 @@ function p(arg)
   %  qq = qq(1:l);
   t_ns = 1e9*(0:(h_l-1))/asamp_Hz;
   t_us = t_ns/1000;
-  % x = 1:(h_l*n);
+%   x = 1:(h_l*n);
 
 
   if (0)
@@ -572,16 +527,9 @@ function p(arg)
     return;
   end
 
-  
-  ncplot.subplot(1,2);
-  % CORRELATION WITH HEADER
-  %  mean_before_norm = tvars.ask_yn('correlation vector mean taken before magnitude (const ph)', 'mean_before_norm', 1);
   mean_before_norm = 0;
-  if (mean_before_norm)
-    method=2;
-  else
-    method=3;
-  end
+  method=3;
+
 
   opt2=0;
   
@@ -591,24 +539,22 @@ function p(arg)
   %   fprintf('max abs %d, %d\n', max(abs(ii)), max(abs(qq)));
 
   %   opt_show=1;
-  % opt_skip=0;
-  if (1)
-    opt_skip=tvars.ask('skip how many hdrs', 'opt_skip');
-    opt_offset_asamps = opt_skip * frame_pd_asamps;
-  else
-   opt_offset_ns = tvars.ask('eye time offset (ns)', 'opt_offset_ns', 0);
-   opt_offset_asamps = round(opt_offset_ns*1e-9*asamp_Hz)
-  end
+  opt_skip=0;
+  opt_skip=tvars.ask('skip how many hdrs', 'opt_skip');
+  opt_offset_ns = 0;
+
   
+  if (opt_show)
+    %    opt_offset_ns = tvars.ask('eye time offset (ns)', 'opt_offset_ns', 0);
+    opt_offset_ns = 0;
+  end
+  opt_offset_asamps = round(opt_offset_ns*1e-9*asamp_Hz);
   opt_skip_left = opt_skip;
   tvars.save();
 
   c_all  = zeros(h_l,1);
   n_all  = 0;
 
-  if (~use_lfsr)
-    hdr = pat_base(:);
-  end
 
 
   if (sim_hdl.do)
@@ -623,28 +569,16 @@ function p(arg)
     pwr_all=sqrt(ii.^2+qq.^2);
   end
 
-  cheat=0;
   if (cipher_en)
     cipher_en = tvars.ask_yn('analyze cipher','analyze_cipher',0);
     if (cipher_en)
-      ignore_ns = tvars.ask('ignore time after pilot (ns)','ignore_ns',0);
+      ignore_ns = tvars.ask('ignore time after hdr (ns)','ignore_ns',0);
       ignore_asamps = round(ignore_ns * 1e-9 * asamp_Hz);
-
-      if (~cheat)
-        body_ph_offset_deg = tvars.ask('body phase offset (deg)','body_ph_offset_deg',1);
-      end
-
     end
   end
-  if (cipher_en)
-    cipher = zeros(cipher_len_bits, 1);
-  end
-  alice_txing = mvars.get('alice_txing',0);
-  rx_en = alice_txing;
-
 
   
-  do_calc_pwr = tvars.ask_yn('calc pwr','calc_pwr',0);
+  do_calc_pwr = 0; % tvars.ask_yn('calc pwr','calc_pwr',0);
 
 
 
@@ -675,8 +609,131 @@ function p(arg)
 
     
   choice = 'n';
+  search_mode=0;
+
+
+
+  opt_show_all=opt_show;
+
+  % TIME DOMAIN PLOT of NON-SKIPPED FRAME
+  if (opt_show_all && ~search_mode)
+            %            if (~search_mode || (max(c2) > search_cmax))
+    off_us = 0;
+
+
+    rng = (1:round(frame_pd_asamps*1.2)) + opt_skip * frame_pd_asamps;
+    frame_off = rng(1);
+
+    % CORRELATE FOR HDR
+    hdr = lfsr.gen(hdr_len_bits);
+    lfsr_idx = 1;
+    hdr = repmat(hdr.',osamp,1);
+    hdr = hdr(:)*2-1;
+    ci = corr_circ(hdr, ii(rng));
+    cq = corr_circ(hdr, qq(rng));
+    c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
+    search_cmax = max(c2);
 
     
+    % TIME PLOT
+    ncplot.subplot(1,2);
+    ncplot.subplot();
+    if (1)
+      t_ms = 1e6*(rng-1).'/asamp_Hz;
+      xunits = 'us';
+    else
+      t_ms = rng;
+      xunits = 'samples';
+    end
+    plot(t_ms, ii(rng), '.-', 'Color',coq(1,:));
+    plot(t_ms, qq(rng), '.-', 'Color',coq(2,:));
+    plot(t_ms, c2, '-', 'Color','red');
+    [c2_mx c2_mi]=max(c2);
+    line([1 1]*t_ms(c2_mi),[0 c2_mx],'Color','red');
+    mx = max(max(ii(rng)), max(qq(rng))); % just for plot ylim
+    ylim([-mx mx]);
+    if (0)
+      if (c2_mi+hdr_len_asamps <= frame_pd_asamps)
+        line([1 1]*t_ms(c2_mi+hdr_len_asamps),[0 c2_mx],'Color','magenta');
+        % dont plot hdr if not all of it is there.
+        h_rng = c2_mi-1+(0:hdr_len_bits-1)*osamp + 2;
+        h_rng = [h_rng; h_rng+1];
+        h_rng = reshape(h_rng,[],1);
+        plot(t_ms(h_rng), ii(h_rng+frame_off), '.', 'Color', co(1,:));
+        plot(t_ms(h_rng), qq(h_rng+frame_off), '.', 'Color', co(2,:));
+      end
+    end
+    if (is_alice)
+      plot(t_ms, aug0(rng)*mx,    '-', 'Color','green'); % pwr_det
+      plot(t_ms, aug5(rng)*mx*.5, '-', 'Color','magenta'); % pwr_event_iso
+    end
+    plot(t_ms, aug1(rng)*mx, '-', 'Color','blue');   % dbg_hdr_det
+    idx=find(aug1(rng),1);
+    if (idx)
+      ncplot.txt(sprintf('detection at idx %d = %s', ...
+                         idx, uio.dur(t_ms(idx))));
+    end
+    %                  plot(t_ms, aug2(rng)*mx, '-', 'Color','magenta');% hdr_sync (not dlyd)
+    % plot(t_ms, aug3(rng)*mx, '-', 'Color','black');  % hdr_found
+
+    % plot(t_ms, aug4(rng)*1000, '-', 'Color','blue');
+    xlim([t_ms(1) t_ms(end)]);
+    
+    [mx mi]=max(pwr_all(rng));
+
+    if (host)
+      ncplot.txt(sprintf('host %s', host));
+    end
+    %                ncplot.txt(sprintf('frame %d', f_i));
+    %                ncplot.txt(sprintf('offset %d = time %.1f us', frame_off, frame_off*frame_pd_us));
+    ncplot.txt(sprintf('max sqrt(I^2+Q^2)  %.1f', mx));
+
+    ncplot.txt(sprintf('det:  pwr_thresh %d  corr_thresh %d', ...
+                       mvars.get('hdr_pwr_thresh'), mvars.get('hdr_corr_thresh')));
+    ncplot.txt(sprintf('corr max %d at %.3fms = idx %d', ...
+                       round(c2_mx), t_ms(c2_mi), c2_mi));
+
+
+    aug2_sub =   aug2(rng);
+    ai=find(aug2_sub, 1);
+    if (~isempty(ai))
+      ncplot.txt(sprintf('      aug2 %d',ai));
+    end
+    % ylim([-1.2 1.2]*mx);
+    xlabel(sprintf('time (%s)',xunits));
+    ylabel('amplitude (adc)');
+    ncplot.title({mname; fname_s});
+
+    if (1)
+      [mxv mxi]=max(c2);
+      % Because our corr pattern uses +1 for 1 and -1 for 0,
+      % A positive correlation lies along pos x axis.
+      hdr_ph_deg = atan2(cq(mxi),ci(mxi))*180/pi;
+      ncplot.subplot();
+      h_rng = frame_off+c2_mi-1+(1:hdr_len_asamps);
+      ncplot.iq(ii(h_rng),qq(h_rng));
+      h_srng = frame_off+c2_mi-1 + floor(osamp/2) + (0:hdr_len_bits-1)*osamp;
+      plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
+      h_srng = frame_off+c2_mi-1 + floor(osamp/2)+1 + (0:hdr_len_bits-1)*osamp;
+      plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
+      mx=max([abs(ii);abs(qq)]);
+      c=cos(hdr_ph_deg*pi/180)*mx;
+      s=sin(hdr_ph_deg*pi/180)*mx;
+      line([0 c],[0 s],'Color','blue');
+      ncplot.title({'IQ plot of header'; fname_s});
+      ncplot.txt(sprintf('phase %d deg', round(hdr_ph_deg)));
+    end
+
+    uio.pause('This is the frame you selected.  Reception will start here.');
+  end % if show al land not searjc
+
+  opt_offset_asamps = frame_off-1 + c2_mi-1; % zero based
+
+  
+
+
+  rx_going=0;
+  
   n_left = n;
   itr=1;
   while ((n_left>0)&&(itr<=num_itr))
@@ -701,7 +758,7 @@ function p(arg)
       hdr_phs_deg = zeros(frame_qty,1);
       phs_deg_l = 0;
       body_phs_deg = zeros(frame_qty,1);
-      bers    = zeros(frame_qty,1);
+      frame_bers   = zeros(frame_qty,1);
 
       si = 1               + (itr-1)*frame_qty*frame_pd_asamps;
       ei = nn*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps;
@@ -743,7 +800,6 @@ function p(arg)
         calc_corr_dets(c2, hdr_len_asamps, frame_qty, fname_s, sim_hdl);
         lfsr.reset();
         lfsr_idx = 0;
-          
       end
 
 
@@ -753,27 +809,18 @@ function p(arg)
 
       cipher_err_cnt=0;
       cipher_bit_cnt=0;
-
-
       
+      sym_err_cnt=0;
+      sym_cnt=0;
+
+      cheat=0;
       sweep_angs = [];
+      frame_i=0;
       for f_i=1:nn % for each frame
-        % frame_off is zero based.
-
-        frame_off=(f_i-1)*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps + opt_offset_asamps;
-        if (frame_off+frame_pd_asamps > length(ii))
-          break;
-        end
-        rng = (1:frame_pd_asamps)+frame_off;
-
-        
-
-
-        if (find_hdr)
 
           if (use_lfsr) % ever-changing probe
             if (tx_same_hdrs)
-              lfsr.reset();                    
+              lfsr.reset();
               lfsr_idx = 0;
             end
             hdr = lfsr.gen(hdr_len_bits);
@@ -782,38 +829,27 @@ function p(arg)
           hdr = repmat(hdr.',osamp,1);
           hdr = hdr(:)*2-1;
 
+          % frame_off is zero based.
+          frame_off=(f_i-1)*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps + opt_offset_asamps;
 
-          % CORRELATE FOR PILOT or PROBE
+          if (frame_off+frame_pd_asamps > length(ii))
+            break;
+          end
+            
+          rng = (1:frame_pd_asamps)+frame_off;
+
+          % correlate for header in this frame
           ci = corr_circ(hdr, ii(rng));
           cq = corr_circ(hdr, qq(rng));
           c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
           [mxv mxi]=max(c2);
-          
-          % mxi should always be the same. check that.
-          if (~skip && (mxi_occ < mxi_l))
-            mxi_occ=mxi_occ+1;
-            mxis(mxi_occ)=mxi;
-            if (mxi_occ==mxi_l)
-              mxi_med = round(median(mxis));
-            end
-          elseif (mxi_occ >= mxi_l)
-            if (mxi ~= mxi_med)
-              fprintf('WARN: corr max in bin %d not %d\n', ...
-                      mxi, mxi_med);
-            end
-            mxi=mxi_med;
-            mxv=c2(mxi);
-          end
 
-          % DETERMINE PHASE OF HEADER
           % Because our corr pattern uses +1 for 1 and -1 for 0,
           % A positive correlation lies along pos x axis.
           hdr_ph_deg = atan2(cq(mxi),ci(mxi))*180/pi;
           hdr_phs_deg(f_i)=hdr_ph_deg;
           hdr_phs_deg_l = f_i;
 
-          % fprintf('DBG: found pilot at index %d, phase %.1f deg\n', mxi, hdr_ph_deg);
-          
           if (sim_hdl.do)
             
             sum_shft = floor(log2(hdr_len_bits -1));
@@ -842,28 +878,28 @@ function p(arg)
             %           else
           end
 
-        end % if find_hdr
 
-        
-        % TIME DOMAIN PLOT OF CURRENT FRAME
-        if (opt_show_all)
 
-          ncplot.subplot(1,2);
-          ncplot.subplot();
-          if (1)
-            t_ms = 1e6*(rng-1).'/asamp_Hz;
-            xunits = 'us';
-          else
-            t_ms = rng;
-            xunits = 'samples';
-          end
-          plot(t_ms, ii(rng), '.-', 'Color',coq(1,:));
-          plot(t_ms, qq(rng), '.-', 'Color',coq(2,:));
           
-          if (find_hdr)
-            % plot(t_ms, c2, '-', 'Color','red');
+          % TIME DOMAIN PLOT OF CURRENT FRAME
+          if (opt_show_all && ~search_mode)
+
+            search_cmax = max(c2);
+            ncplot.subplot(1,2);
+            ncplot.subplot();
+            if (1)
+              t_ms = 1e6*(rng-1).'/asamp_Hz;
+              xunits = 'us';
+            else
+              t_ms = rng;
+              xunits = 'samples';
+            end
+            plot(t_ms, ii(rng), '.-', 'Color',coq(1,:));
+            plot(t_ms, qq(rng), '.-', 'Color',coq(2,:));
+            %plot(t_ms, c2, '-', 'Color','red');
             [c2_mx c2_mi]=max(c2);
-            line([1 1]*t_ms(c2_mi),[0 c2_mx],'Color','red');
+            %line([1 1]*t_ms(c2_mi),[0 c2_mx],'Color','red');
+
             mx = max(mx, max(abs(c2))); % just for plot ylim
             if (c2_mi+hdr_len_asamps <= frame_pd_asamps)
               line([1 1]*t_ms(c2_mi+hdr_len_asamps),[0 c2_mx],'Color','magenta');
@@ -874,374 +910,176 @@ function p(arg)
               plot(t_ms(h_rng), ii(h_rng+frame_off), '.', 'Color', co(1,:));
               plot(t_ms(h_rng), qq(h_rng+frame_off), '.', 'Color', co(2,:));
             end
-          end
 
-          %        plot(t_ms, pwr_all(rng), '-', 'Color','yellow');
-          if (is_alice)
-            plot(t_ms, aug0(rng)*mx,    '-', 'Color','green'); % pwr_det
-            plot(t_ms, aug5(rng)*mx*.5, '-', 'Color','magenta'); % pwr_event_iso
-          end
-          plot(t_ms, aug1(rng)*mx, '-', 'Color','blue');   % dbg_hdr_det
-          idx=find(aug1(rng),1);
-          if (idx)
-            ncplot.txt(sprintf('detection at idx %d = %s', ...
-                               idx, uio.dur(t_ms(idx))));
-          end
-          %                  plot(t_ms, aug2(rng)*mx, '-', 'Color','magenta');% hdr_sync (not dlyd)
-          plot(t_ms, aug3(rng)*mx, '-', 'Color','black');  % hdr_found
-          plot(t_ms, aug4(rng)*mx*.9, '-', 'Color','red'); % hdr_sync_dlyd
-                                                           % plot(t_ms, aug4(rng)*1000, '-', 'Color','blue');
-          xlim([t_ms(1) t_ms(end)]);
-          [mx mi]=max(pwr_all(rng));
-          if (1)
-            if (host)
-              ncplot.txt(sprintf('host %s', host));
-            end
-            ncplot.txt(sprintf('frame %d', f_i));
-            ncplot.txt(sprintf('offset %d = time %.1f us', frame_off, frame_off*frame_pd_us));
-            ncplot.txt(sprintf('max sqrt(I^2+Q^2)  %.1f', mx));
-            if (find_hdr)
-              ncplot.txt(sprintf('det:  pwr_thresh %d  corr_thresh %d', ...
-                                 mvars.get('hdr_pwr_thresh'), mvars.get('hdr_corr_thresh')));
-              ncplot.txt(sprintf('corr max %d at %.3fms = idx %d', ...
-                                 round(c2_mx), t_ms(c2_mi), c2_mi));
-            end
-          end
-          aug2_sub =   aug2(rng);
-          ai=find(aug2_sub, 1);
-          if (~isempty(ai))
-            ncplot.txt(sprintf('      aug2 %d',ai));
-          end
-          % ylim([-1.2 1.2]*mx);
-          xlabel(sprintf('time (%s)',xunits));
-          ylabel('amplitude (adc)');
-          ncplot.title({mname; fname_s});
+            % frame_off is zero based. 
+            line([1 1]*t_ms(qsdc_data_pos_asamps+1), ...
+                 [0 c2_mx],'Color','blue');
+            line([1 1]*t_ms(qsdc_data_pos_asamps+qsdc_data_len_asamps), ...
+                 [0 c2_mx],'Color','blue');
 
-          if (find_hdr)
-            ncplot.subplot();
-            h_rng = frame_off+c2_mi-1+(1:hdr_len_asamps);
-            ncplot.iq(ii(h_rng),qq(h_rng));
-            h_srng = frame_off+c2_mi-1 + floor(osamp/2) + (0:hdr_len_bits-1)*osamp;
-            plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
-            h_srng = frame_off+c2_mi-1 + floor(osamp/2)+1 + (0:hdr_len_bits-1)*osamp;
-            plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
-            mx=max([abs(ii);abs(qq)]);
-            c=cos(hdr_ph_deg*pi/180)*mx;
-            s=sin(hdr_ph_deg*pi/180)*mx;
-            line([0 c],[0 s],'Color','blue');
-            ncplot.title({'IQ plot of pilot'; fname_s});
-            ncplot.txt(sprintf('frame %d', f_i));
-            ncplot.txt(sprintf('phase %d deg', round(hdr_ph_deg)));
-            ncplot.txt(sprintf('pilot twopi %d', tx_hdr_twopi));
-          end
-
-          uio.pause('review frame');
-        end % if show all
-
-        % CIRCLE FIT FOR WHEN DOING SINE MODULATION FOR IMBALANCE CALIBRATION
-        if (~find_hdr)
-          fcopt.noplot=~opt_show_all;
-          if (opt_show_all)
-            ncplot.subplot();
-            ncplot.iq(ii(rng),qq(rng));
-            xlabel('I');
-            ylabel('Q');
-            ncplot.title({fname_s; 'IQ plot of frame'});
-          end
-          fcopt.no_txt=1;
-          [ctr radius sweep_deg cphs_deg] = fit_circle(ii(rng),qq(rng),fcopt);
-          sweep_angs(f_i)  = sweep_deg;
-          hdr_phs_deg(f_i) = cphs_deg;
-          hdr_phs_deg_l = f_i;
-        end
-        
-
-
-        if (do_calc_pwr && frame_by_frame)
-          'CALC PWR'
-          prng = (f_i-1)*frame_pd_asamps + c2_mi-1 + (1:frame_pd_asamps);
-          pwr_an=pwr_all(prng);
-          cpopt.len_asamps=frame_pd_asamps;
-          cpopt.start_idx=1;
-          res = calc_pwr(pwr_an.^2, ...
-                         frame_pd_asamps, hdr_len_asamps, asamp_Hz, fname_s, cpopt);
-          uio.pause();
-          pwr = pwr + pwr_all(rng);
-        end
-
-
-        % frame_off is zero-based.
-        is = frame_off + c2_mi-1 + hdr_len_asamps+1; % idx of start of body
-        if (cipher_en && (is+cipher_len_asamps-1 <= l))
-          cipher = cipher_lfsr.gen(cipher_len_bits);
-          if (cipher_m==8)
-            cipher = reshape(cipher.',4,[]);
-            cipher = 8*cipher(1,:)+4*cipher(2,:)+1*cipher(3,:)+cipher(4,:);
-          elseif (cipher_m==4)
-            cipher = reshape(cipher.',2,[]);
-            cipher = 2*cipher(1,:)+cipher(2,:);
-          else
-            cipher = reshape(cipher.',1,[]);
-          end
-          % cipher(1:16)
-
-          cipher = repmat(cipher,cipher_symlen_asamps,1);
-          cipher = cipher(:);
-          
-          cipher_frame_qty = f_i;
-          ii_s = ii(is-1 + (1:cipher_len_asamps));
-          qq_s = qq(is-1 + (1:cipher_len_asamps));
-
-          cipher_c = exp(-i*cipher*2*pi/cipher_m); % BPSK: 0->1, 1->-1
-          desc = 'body';
-
-          %          xs = cipher_len_asamps/2+1;
-          xs = ceil(ignore_asamps / cipher_symlen_asamps)*cipher_symlen_asamps + 1; % 1 based
-          xe = cipher_len_asamps - cipher_symlen_asamps; % 1 based
-          ss_l = floor((xe-xs+1)/cipher_symlen_asamps);
-          xl = [xs xe]; % range of "good" data in ii_s.
-          idxs= xs + (0:ss_l-1)*cipher_symlen_asamps + 1;
-          eidxs = idxs.'+1;
-          idxs=reshape([idxs; idxs+1],[],1);
-
-          % ph_deg = 0;
-
-
-          if (cheat)
-            ph_deg = calc_derot2(ii_s(idxs),qq_s(idxs), hdr_ph_deg+tx_hdr_twopi*90);
-            ph_method='cheat';
-          else
-            % ph_deg = hdr_ph_deg + tx_hdr_twopi*30; ph_method='hdr+30';
-            ph_deg =  hdr_ph_deg - body_ph_offset_deg + tx_hdr_twopi*45;
-            ph_method='pilot based';
-          end
-          %ph_deg = calc_derot(ii_s(idxs),qq_s(idxs), ph_deg);
-          body_phs_deg(f_i) = ph_deg;
-
-
-          % IQ PLOT OF RAW BODY (AFTER PILOT)
-          if (opt_show_all && frame_by_frame)
-            ncplot.subplot(1,2);
-            ncplot.subplot();
-            iqopt.color=coq(1,:);
-            iqopt.markersize=6;
-            ncplot.iq(ii_s, qq_s, iqopt);
-            iqopt.color=co(1,:);
-            ncplot.iq(ii_s(idxs), qq_s(idxs), iqopt);
-            %       plot(ii_s(idxs),qq_s(idxs), );
-            ncplot.title(sprintf('%s BEFORE ROTATION', desc));
-            %            ncplot.txt(sprintf('ph %.1f deg', ph_deg));
-          end
-
-          % IQ PLOT OF ROTATED BODY (AFTER PILOT)
-          iiqq = geom.rotate(-ph_deg*pi/180, [ii_s.';qq_s.']);
-          ii_s = iiqq(1,:).';
-          qq_s = iiqq(2,:).';
-          if (opt_show_all && frame_by_frame)
-            ncplot.subplot();
-            iqopt.color=coq(1,:);
-            ncplot.iq(ii_s, qq_s, iqopt);
-            iqopt.color=co(1,:);
-            ncplot.iq(ii_s(idxs),qq_s(idxs), iqopt);
-            ncplot.title(sprintf('%s AFTER ROTATION', desc));
-            if (~cheat)
-              ncplot.txt(sprintf('rotated by %d-pilot', body_ph_offset_deg));
-            end
-            ncplot.txt(sprintf('rotated by %.1f deg', -ph_deg));
-            ncplot.txt(sprintf('method: %s', ph_method));
-            uio.pause('review derotation of body');
-          end
-
-          if (0)
-            ncplot.subplot();
-            % Plot histogram of slices through "chip" to  double check
-            % that we sample the chip in the middle of its eye
-            mx=max(ii_s);
-            mn=min(ii_s);
-            s=(mx-mn)/63;
-            edges=mn:s:mx;
-            edges(end)=inf;
-            ii_r=reshape(ii_s,4,[]);
-            for k=1:4
-              n=histc(ii_r(k,:), edges);
-              plot(1:length(n),n,'.-','Color',coq(k,:));
-            end
-            title('histograms of eye slices');
-            %          plot(mod(0:length(ii_s)-1,4), ii_s, '.', 'Markersize',1,'Color', coq(1,:));
-            %          xlim([-0.1 3.1]);
-            %          xlabel('idx');ylabel('i');
-            uio.pause();
-          end
-          
-
-          err=0;
-
-
-          
-          errmsk=logical(zeros(ss_l,1));
-          for k=1:ss_l
-            ki = cipher_len_asamps-4*ss_l+1+(k-1)*4+1;
-            c=cipher(ki);
-            % fprintf(' %d',c);
-            ii_m=mean(ii_s(ki+(0:1)));
-            errmsk(k) = logical(c ~= (ii_m>0));
-            err = err + (c ~= (ii_m>0));
-            %            qq_m=mean(qq_s(ki+(0:1)));
-            %            plot(ii_m, qq_m, '.', 'Color', coq(1,:));
-            % fprintf('%d %g %g\n', c, ii_m, qq_m);            
-            %            sums(c+1,1:3)=sums(c+1,1:3)+[1 ii_m qq_m];
-          end
-          ber = err/ss_l;
-          if (cheat && (ber>.5))
-            ber = 1-ber;
-            body_phs_deg(f_i) = ph_deg+180;
-            err = ss_l-err;
-          end
-          bers(f_i) = ber;
-
-          if (f_i>2)
-            cipher_err_cnt = cipher_err_cnt + err;
-            cipher_bit_cnt = cipher_bit_cnt + ss_l;
-          end
-          % fprintf('\n');
-          
-          if (opt_show_all && frame_by_frame)
-            fprintf('cipher %d-psk, len %d asamps, duration %s\n', cipher_m, length(cipher), ...
-                  uio.dur(length(cipher)/asamp_Hz));
-
-            
-            ncplot.init();
-            ncplot.subplot(1,2);
-            % Time Domain plot of IQ with expected data superimposed
-            ncplot.subplot();
-            plot(1:cipher_len_asamps, ii_s, '-', 'Color',coq(1,:));
-            plot(idxs, ii_s(idxs), '.', 'Color',ch(1,:));
-            plot(1:cipher_len_asamps, qq_s, '-', 'Color',coq(2,:));
-            plot(idxs, qq_s(idxs), '.', 'Color',ch(2,:));
-            mx=max(max(abs(ii_s)),max(abs(qq_s)))*.9;
+            xlim([t_ms(1) t_ms(end)]);
+            [mx mi]=max(pwr_all(rng));
             if (1)
-              plot(1:cipher_len_asamps, real(cipher_c)*mx*.5, '-', 'Color', 'yellow');
-              ncplot.txt('yellow: expected cipher');
+              if (host)
+                ncplot.txt(sprintf('host %s', host));
+              end
+              ncplot.txt(sprintf('frame %d', f_i));
+              ncplot.txt(sprintf('offset %d = time %.1f us', frame_off, frame_off*frame_pd_us));
+              ncplot.txt(sprintf('max sqrt(I^2+Q^2)  %.1f', mx));
+              if (find_hdr)
+                ncplot.txt(sprintf('det:  pwr_thresh %d  corr_thresh %d', ...
+                                   mvars.get('hdr_pwr_thresh'), mvars.get('hdr_corr_thresh')));
+                ncplot.txt(sprintf('corr max %d at %.3fms = idx %d', ...
+                                   round(c2_mx), t_ms(c2_mi), c2_mi));
+              end
             end
-            plot(eidxs(errmsk),ii_s(eidxs(errmsk)),'.','Color','red');
-            
-            if (cipher_m>2)
-              plot(1:cipher_len_asamps, imag(cipher_c)*mx, '-', 'Color',coq(2,:));
+            % ylim([-1.2 1.2]*mx);
+            xlabel(sprintf('time (%s)',xunits));
+            ylabel('amplitude (adc)');
+            ncplot.title({mname; fname_s});
+
+            % DRAW IQ PLOT OF HEADER
+            if (1)
+              h_rng = rng(1)-1+(1:hdr_len_asamps);
+              ncplot.subplot();
+              ncplot.iq(ii(h_rng),qq(h_rng));
+              h_srng = frame_off+c2_mi-1 + floor(osamp/2) + (0:hdr_len_bits-1)*osamp;
+              plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
+              plot(ii(h_srng+1),qq(h_srng+1),'.', 'Color','blue');
+              mx=max([abs(ii);abs(qq)]);
+              c=cos(hdr_ph_deg*pi/180)*mx;
+              s=sin(hdr_ph_deg*pi/180)*mx;
+              line([0 c],[0 s],'Color','blue');
+              ncplot.title({'IQ plot of header'; fname_s});
+              ncplot.txt(sprintf('frame %d', f_i));
+              ncplot.txt(sprintf('phase %d deg', round(hdr_ph_deg)));
             end
-            ncplot.txt(sprintf('frame %d', f_i));
-            xlim(xl);
-            ylabel('i&q (adc)');
-            xlabel('index');
-            title(sprintf('rotated body time domain', desc));
-              
-            ncplot.subplot();
-            % ncplot.eye(ii_s(xs:cipher_len_asamps), qq_s(xs:cipher_len_asamps));
-            ncplot.iq(ii_s(idxs),qq_s(idxs));
-            %            v=calc_derot(ii_s(idxs),qq_s(idxs))*5000;
-            %            line([0 v(1)],[0 v(2)],'Color','red');
-            ncplot.title({sprintf('rotatad body IQ plot', desc); fname_s});
-            ncplot.txt(sprintf('frame %d', f_i));
-            ncplot.txt(sprintf('bits %d', ss_l*round(log2(cipher_m))), 'blue');
 
-            fprintf('cipher BER %.4f\n', ber);
-            uio.pause('review rotated body');
-          end
+          end % if show all and not search
 
-          if (0)
-            ncplot.subplot();
-            % take mean of all "similar" symbols
-            sums=zeros(cipher_m,3);
-            for k=1:ss_l
-              ki = cipher_len_asamps-4*ss_l+1+(k-1)*4+1;
-              c=cipher(ki);
-              
-              ii_m=mean(ii_s(ki+(0:1)));
-              printf('%d %d\n', c, ii_m>0)
-              
-              %            qq_m=mean(qq_s(ki+(0:1)));
-              %            plot(ii_m, qq_m, '.', 'Color', coq(1,:));
-              % fprintf('%d %g %g\n', c, ii_m, qq_m);            
-              %            sums(c+1,1:3)=sums(c+1,1:3)+[1 ii_m qq_m];
-            end
-            %          set(gca(),'PlotBoxAspectRatio', [1 1 1]);
-            for k=1:cipher_m
-              sums(k,2:3) = sums(k,2:3)/sums(k,1);
-              fprintf('%d %.1f %.1f\n', k-1, sums(k,2:3));
-              plot(sums(k,2),sums(k,3),'.','Color',co(1,:));
-              text(sums(k,2),sums(k,3),sprintf('%d', k-1),'Color',co(1,:));
-            end
-            ncplot.title({fname_s; 'IQ scatterplot of body'});
-          end
 
-          
-          if (0)
-            ncplot.subplot(3,1);
-            ph_s = atan2(qq_s, ii_s)*180/pi;
-            ncplot.subplot();
-            plot(1:cipher_len_asamps, ph_s, '.-', 'Color',coq(1,:));
-            plot(1:cipher_len_asamps, (mod(cipher,4)+1)*50, '.-', 'Color',coq(2,:));
-            xlim(xl);
-            title('phase of IQ');
-          end
-
-          if (0) %DEROTE BY CIPHER
-            sig = (ii_s + j * qq_s) .* cipher_c;
-            ii_s = real(sig);
-            qq_s = imag(sig);
-            ncplot.subplot();
-            plot(1:cipher_len_asamps, ii_s, 'Color',coq(1,:));
-            plot(1:cipher_len_asamps, qq_s, 'Color',coq(2,:));
-            xlim([xs cipher_len_asamps]);
-            title('after derot');
+          if (~rx_going)
+            uio.print_wrap('The region of time plot between the two dark blue lines is where the data should be.  If not, you can adjust it.');
+            body_adj_ns = tvars.ask('data body adj (ns)','body_adj_ns',1);
+            tvars.save();
+            body_adj_asamps = round(body_adj_ns*1e-9*asamp_Hz);
+            rx_going=1;
+          else
             uio.pause();
           end
-        end
 
+          frame_i=frame_i+1;
+          % data = cipher_lfsr.gen(bits_per_frame);
 
-        if (~tst_sync || (f_i<=frame_qty/2))
-          c = c + c2;
-          c_qty = c_qty + 1;
-        else
-          c_alice = c_alice + c2;
-          ca_qty = ca_qty + 1;
-        end
-
-
-        if (opt_show_all)                  
-          choice = uio.ask_choice('(n)ext, goto (e)nd, or (q)uit', 'neq', choice);
-          if (choice=='q')
-            return;
-          elseif (choice=='e')
-            opt_show_all=0;
+          rng2_off = body_adj_asamps+frame_off+qsdc_data_pos_asamps;
+          rng2 = rng2_off+(1:qsdc_data_len_asamps);
+          if (1)
+            iiqq = geom.rotate(-hdr_ph_deg*pi/180, [ii(rng2).';qq(rng2).']);
+            d_ii=iiqq(1,:).';
+            d_qq=iiqq(2,:).';
+            desc='derotated by hdr ang';
+          else
+            d_ii = ii(rng2);
+            d_qq = qq(rng2);
+            desc='raw';
           end
-        end
+          nsyms = qsdc_data_len_asamps/qsdc_symbol_len_asamps;
+          sym_rng=(0:nsyms-1)*4+2;
+          e_rng=[sym_rng; sym_rng+1];
+          e_rng=e_rng(:);
 
+          % CALC SYMBOL ERRORS IN FRAME
+          err_sum=0;
+          errmsk=logical(zeros(nsyms));
+          for k=1:nsyms
+            if (sym_i+k-1>length(txed_syms))
+              break;
+            end
+            c=txed_syms(sym_i+k-1);
+            ii_m=mean(d_ii((k-1)*4+(2:3)));
+            e = logical(c ~= (ii_m<0));
+            % if (k<8) fprintf('d %d  i %d   e %d\n', c, ii_m, e); end
+            errmsk(k) = e;
+            err_sum = err_sum + e;
+            nsyms_actual = k;
+          end
+          frame_ber = err_sum/nsyms_actual;
+          frame_bers(f_i) = frame_ber;
+
+          sym_i = sym_i + nsyms;
+          
+          sym_err_cnt = sym_err_cnt + err_sum;
+          sym_cnt = sym_cnt + nsyms_actual;
+
+
+          % DRAW DATA, SUPERIMPOSE ERRORS IN REGD
+          ncplot.init();
+          ncplot.subplot(1,2);
+          ncplot.subplot();
+          plot(1:qsdc_data_len_asamps, d_ii,'-','Color',coq(1,:));
+          plot(1:qsdc_data_len_asamps, d_qq,'-','Color',coq(2,:));
+          plot(e_rng, d_ii(e_rng),'.','Color',ch(1,:));
+          plot(e_rng, d_qq(e_rng),'.','Color',ch(2,:));
+          plot(sym_rng(errmsk),d_ii(sym_rng(errmsk)),'.','Color','red');
+          ncplot.txt(sprintf('frame %d', frame_i));
+          ncplot.txt(sprintf('frame BER %g', frame_ber));
+
+          mx=max(max(d_ii),max(d_qq));
+
+          is=(frame_i-1)*qsdc_data_len_asamps+1;
+          ie=min(is+qsdc_data_len_asamps-1, length(txed_asamps));
+          txrng= is:ie;
+          plot(txrng-(is-1), (2*txed_asamps(txrng)-1)*mx/2, '-','Color','yellow');
+          xlabel('index');
+          ncplot.txt(desc);
+          ncplot.title({'time plot of QSDC data'; fname_s});
+
+          if (0)
+            ci = corr_circ(data(1:32), d_ii);
+            cq = corr_circ(data(1:32), d_qq);
+            c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
+            [ds dsi] =  max(c2);
+            if (dsi>0)
+              line(dsi, [0 c2_mx],'Color','black');
+            end
+          end
+
+
+          % DRAW IQ PLOT OF BODY
+          ncplot.subplot();
+          ncplot.iq(d_ii, d_qq);
+          h_srng = body_adj_asamps+frame_off+qsdc_data_pos_asamps+(0:nsyms-1)*4 + 2;
+          plot(d_ii(e_rng), d_qq(e_rng),'.', 'Color','blue');
+          ncplot.txt(desc);
+          ncplot.txt(sprintf('frame %d', frame_i));
+          ncplot.title({'IQ plot of QSDC data'; fname_s});
+
+
+            
+
+          
+          if (opt_show_all)                  
+            choice = uio.ask_choice('(n)ext, goto (e)nd, or (q)uit', 'neq', choice);
+            if (choice=='q')
+              return;
+            elseif (choice=='e')
+              opt_show_all=0;
+            end
+          end
+
+          if (is+qsdc_data_len_asamps-1 >  length(txed_asamps))
+            break;
+          end
       end % for f_i (each frame)
 
 
-      %      fprintf('DBG: out of loop f_i\n');
+      fprintf('symbol ber %d/%d = %g\n',  ...
+          sym_err_cnt, sym_cnt, sym_err_cnt/sym_cnt);
+      return
       
-      if (calc_sweep_ang)
-        fprintf('\n\nmean sweep angle %.1f deg\n', mean(sweep_angs));
-        fprintf('         uncertainty %.1f deg (std)\n', std(sweep_angs));
-        uio.pause();
-      end
-      if (cipher_en)
-
-        body_pwr_mW = 10^(mean_pwr_dBm/10);
-        fprintf('body pwr %sW\n', uio.sci(body_pwr_mW/1000));
-        %        wl_nm=1544.53e-9;
-        fprintf('body_symlen %s\n', uio.dur(cipher_symlen_s));
-        n = body_pwr_mW/1000 * cipher_symlen_s / (h_JpHz * c_mps / wl_m);
-        fprintf('body pwr %.2fdB = %sW = %.1f photons\n', mean_pwr_dBm, uio.sci(body_pwr_mW/1000), n);
-        cipher_ber = cipher_err_cnt / cipher_bit_cnt;
-        fprintf('\ncipher BER %d/%d = %.1e\n', cipher_err_cnt, cipher_bit_cnt, cipher_ber);
-        %uio.pause();
-      end
-
+      
 
       
-      %      plot_eye(si,ei,itr);
 
 
       
@@ -1292,8 +1130,8 @@ function p(arg)
         [a_mx a_mi]=max(c_alice);
         plot(t_us, c_alice, '-','Color','red');
         a_mx=round(a_mx);
-        ncplot.txt(sprintf(' bob marker at idx %d\n', mi));
-        ncplot.txt(sprintf('alice pilot at idx %d\n', a_mi));
+        ncplot.txt(sprintf('  bob hdr at idx %d\n', mi));
+        ncplot.txt(sprintf('alice hdr at idx %d\n', a_mi));
         ncplot.txt(sprintf('  ideal sync_dly %d\n', mi-a_mi));
       end
       rng=si:ei;
@@ -1319,12 +1157,12 @@ function p(arg)
 
       plot(fr_t_us, phs_unwrap_deg, '.-','Color',coq(1,:));
       if (find_hdr)
-        s='   blue: pilot phase';
+        s='   blue: hdr phase';
       else
         s='   blue: phase';
       end
       xlabel('time (us)');
-      ylabel('phase (deg)');
+      ylabel('hdr phase (deg)');
       s=[s sprintf('  mean %d deg', round(mean(phs_unwrap_deg)))];
       s=[s sprintf('  std %.1f deg', std(phs_unwrap_deg))];
       ncplot.txt(s);
@@ -1335,7 +1173,7 @@ function p(arg)
         body_phs_unwrap_deg = util.mod_unwrap(body_phs_deg, 360);
         plot(fr_t_us(1:cipher_frame_qty), ...
              body_phs_unwrap_deg(1:cipher_frame_qty), '.-','Color','magenta');
-        s=sprintf('magenta: body phase   mean %d deg', round(mean(body_phs_unwrap_deg(1:cipher_frame_qty))));
+        s=sprintf('magenta: body phase  mean %d deg', round(mean(body_phs_unwrap_deg(1:cipher_frame_qty))));
         ncplot.txt(s);
         
 
@@ -1352,7 +1190,7 @@ function p(arg)
         %      ncplot.txt(sprintf('avg drift %.1f deg/us (green)', p(1)/(frame_pd_s*1e6)))
         %    ylim([-180 180]);
         ncplot.txt(sprintf('body pwr %.2fdBm = %sW = %.1f photons', mean_pwr_dBm, uio.sci(body_pwr_mW/1000,1), n));
-        ncplot.txt(sprintf('cipher BER %d/%d = %.3e', cipher_err_cnt, cipher_bit_cnt, cipher_ber));
+        ncplot.txt(sprintf('BER %d/%d = %.3e', cipher_err_cnt, cipher_bit_cnt, cipher_ber));
 
 
         ncplot.subplot();
@@ -1759,3 +1597,5 @@ function calc_pwr_dets(pwr_thresh, ii, qq, pwr_pd_cycs, hdr_len_asamps, fname_s)
   end
   uio.pause();
 end
+
+
