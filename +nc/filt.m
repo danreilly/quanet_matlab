@@ -2,9 +2,9 @@ classdef filt
   methods (Static=true)
     % matlab "static" methods do not require an instance of the class
 
-    function sig = gauss(sig, fs, fcut, ord)
+    function sigo = gauss(sig, fs, fcut, ord)
     % desc: low-pass gaussian filter of specified order (FIR length)
-    %       zero delay
+    %       zero delay.  Tapered filtering at ends.
     % inputs: ord: optional order
         import nc.*
         sigmaf = fcut/sqrt(2*log(sqrt(2)));
@@ -15,7 +15,7 @@ classdef filt
         end
         
         x = linspace(-ord / 2, ord / 2, ord)/fs;
-        gf = exp(-x .^ 2 / (2 * sigma ^ 2));
+        gf = exp(-x .^ 2 / (2 * sigma ^ 2)).';
 
         %  xm = round(sigma * sqrt(-2*log(.01))*fs * 2);
         %  xm
@@ -32,13 +32,26 @@ classdef filt
                             %  tic
 
         if (0)
-            ncplot.init;
-            plot(x / fs, gf, '.');
-            title('gauss filter');
-            uio.pause;
+          ncplot.init;
+          plot(x / fs, gf, '.');
+          title('gauss filter');
+          uio.pause;
+        end
+
+        sig_l=length(sig);
+        sigo = conv(sig, gf, 'same');
+
+        % taper the filtering at the ends
+        c=ceil(ord/2);
+        for k=1:c-1
+          sl=ord-c+k;
+          sigo(k)=sum(gf(ord-sl+1:ord) .* sig(1:sl)) / sum(gf(ord-sl+1:ord));
+        end
+        for k=1:(ord-c)
+          sl=c+k-1;
+          sigo(sig_l+1-k)=sum(gf(1:sl) .* sig(sig_l-sl+1:end)) / sum(gf(1:sl));
         end
         
-        sig = conv(sig, gf, 'same');
         %  toc
     end
 

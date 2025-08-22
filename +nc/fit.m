@@ -908,7 +908,7 @@ end
 	ncplot.title('nc.fit.gausian() DEBUG');
 	line(xl, [1 1]*ym);
         xlim(xl);
-	uio.pause();
+	uio.pause('nc.fit.gaussian given x and y');
       end
       
       % normalize a little to help numerically
@@ -1176,12 +1176,19 @@ end
     p_c = polyfit(xx, yy, ord);
 
     if (dbg)
+      %      ncplot.init;
+      %      plot(xx, yy,'.');
+      %      yf =  polyval(p_c, xx);
+      %      plot(xx, yf, '-','Color','green');
+      %      uio.pause('polyfit');
+
       ncplot.init;
-      plot(x,y,'.'); hold('on');
+      % 
+      plot(x, y,'.');      
       p2 = p_c;
       p2(end)=p2(end)+y_m;
-      yy =  polyval(p2, (x-x_m));
-      plot(x,yy,'-','Color','green');
+      yy =  polyval(p2, (x-x_m)/x_r);
+      plot(x, yy, '-','Color','green');
     end
 
     % Now p_c = [p1 p2 p3]
@@ -1199,32 +1206,31 @@ end
 
     p_c = p_c ./ (ones(1,ord+1)*x_r).^(ord:-1:0);
 
-    %         =   p1*[  1    -2*x_m     x_m^2]   [ x^2]
-    %             p2*[         1       -x_m  ] * [ x  ]
-    %            +p3*[                   1   ]   [ 1  ]
+    %         =   p_c(1)*[  1    -2*x_m     x_m^2]   [ x^2]
+    %             p_c(2)*[         1       -x_m  ] * [ x  ]
+    %             p_c(3)*[                   1   ]   [ 1  ]
     
-    p = p_c;
+    p = zeros(1,ord+1);
 
+    m_p = (-ones(1,ord+1)*x_m).^(0:ord);
+    %   = [1   -m  m^2 ]
 
-    m_p = (-ones(1,ord+1)*x_m).^(1:ord);
-    %   = [1    m  m^2 ]
-
-    for k=1:ord
+    
+    for k=0:ord
       % binomial coefs for (x + m)^k
       bi_coef = factorial(k)./(factorial(0:k).*factorial(k-(0:k)));
-
       %    p(ord+1-k)
       %    bi_coef(2:end)
       %    m_p(1:k)
 
-      a = p_c(ord+1-k) * bi_coef(2:end) .* m_p(1:k);
-      p(ord+2-k:end) = p(ord+2-k:end) + a;
+      a = p_c(ord+1-k) * bi_coef .* m_p(1:(k+1));
+      p(ord+1-k:end) = p(ord+1-k:end) + a;
       
       if (dbg)
         fprintf('k %d  p_c %g\n', k, p_c(ord+1-k));
         fprintf('  bicoef %s\n',sprintf(' %g', bi_coef(2:end)));
         fprintf('  m_p    %s\n',sprintf(' %g', m_p(1:k)));
-        fprintf('  p(%d:%d) += %s\n', ord+2-k,length(p), sprintf(' %g', a));
+        fprintf('  p(%d:%d) += %s\n', ord+1-k,ord+1, sprintf(' %g', a));
       end
     end
     p(end)=p(end)+y_m;
@@ -1232,6 +1238,7 @@ end
     if (dbg)
       yy=polyval(p, x);
       plot(x,yy,'-','Color','red');
+      uio.pause('polyfit');
     end
   end
 

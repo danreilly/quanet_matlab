@@ -14,11 +14,14 @@ function im_preemp
   else
     frame_pd_asamps = tvars.ask('frame period (asamps)', 'frame_pd_asamps', 1200);
   end
+  frame_pd_us = frame_pd_asamps /asamp_Hz * 1e6;
+  fprintf('frame pd %d asamps = %.3f us \n', frame_pd_asamps, frame_pd_us);  
   
   % hdr_len_bits = tvars.ask('header len (bits)', 'hdr_len_bits', 0);
   hdr_len_ns = tvars.ask('header len (ns)', 'hdr_len_ns', 0);
   hdr_len_asamps = round(hdr_len_ns * 1e-9 * asamp_Hz);
-  hdr_len_s = hdr_len_asamps / asamp_Hz * 1e6;
+  hdr_len_s = hdr_len_asamps / asamp_Hz;
+  hdr_len_ns = hdr_len_s *1e9;
   fprintf('hdr len %s\n', uio.dur(hdr_len_s));
 
   tc_s = tvars.ask('rise timeconst (us)', 'preemph_tc_us', 1)*1e-6;
@@ -34,27 +37,39 @@ function im_preemp
   h = tvars.ask('up fraction', 'up_fraction', 0.5);
   m = (1-h)/hdr_len_asamps;
   frame(1:hdr_len_asamps) = h + m*((1:hdr_len_asamps)-1);
-
-
+  
+  % Goes negative this amt
   lo = hdr_len_asamps/body_asamps;
-  % frame(hdr_len_asamps+(1:body_asamps)) = -lo;
 
-  slope_dur_s = tvars.ask('slope dur (ns)', 'slope_dur_us', 1)*1e-9;
+  lo
+  while (1)
+    slope_dur_s = tvars.ask('body slope dur (ns)', 'slope_dur_ns', 1)*1e-9;
+    if (hdr_len_s+slope_dur_s <= frame_pd_us*1e-6)
+      break;
+    end
+    fprintf('ERR: that duration exceeds the rest of the frame (%g us)', frame_pd_us-hdr_len_s*1e6);
+  end  
   slope_dur_asamps = round(slope_dur_s * asamp_Hz);
   h = tvars.ask('down fraction', 'down_fraction', 0.5);
-  m = -(1-h+lo)/slope_dur_asamps;
-  frame(hdr_len_asamps+(1:slope_dur_asamps)) = 1-h + m*((1:slope_dur_asamps)-1);
+  drop = 1+lo;
+  m = -(drop)*(1-h)/slope_dur_asamps;
+  frame(hdr_len_asamps+(1:slope_dur_asamps)) = 1-h*drop + m*((1:slope_dur_asamps)-1);
+
 
   frame=frame(1:frame_pd_asamps);
-  t = (0:(frame_pd_asamps-1))/asamp_Hz;
-
+  t_us = (0:(frame_pd_asamps-1))/asamp_Hz *1e6;
+  
   tvars.save();
 
+
+  fname = sprintf('preemph_f%d.bin', frame_pd_asamps);
+  
   ncplot.init();
   ncplot.subplot(1,2);
 
   ncplot.subplot();
-  plot(t, frame, '-','Color','yellow');
+  plot(t_us, frame, '-','Color','yellow');
+  xlabel('time (us)');
   if (1)
     v=0;
     sig=zeros(size(frame));
@@ -88,20 +103,23 @@ function im_preemp
     sig = squeeze(ts.Data);
   end
   fprintf('mean sig %g\n', mean(sig));
-  plot(t, sig, '-','Color','red');
-  ncplot.title('im_preemp.m');
+  plot(t_us, sig, '-','Color','red');
+  xlabel('time (us)');
+  ncplot.title({'im_preemp.m'; fname});
   
   ncplot.subplot();
   
-  sig = sig - mean(sig);
+  %  sig = sig - mean(sig);
   sig = round(sig/max(sig) * (2^15-1));
   sig = min(sig, 2^15-1);
-  fprintf('sig ranges from %d = x%s to %d = x%x\n', max(sig), dec2hex(max(sig)), ...
-          min(sig),-dec2hex(-min(sig)));
+  fprintf('sig ranges from %d = x%s to %d = -x%s\n', ...
+          max(sig), dec2hex(max(sig)), ...
+          min(sig), dec2hex(-min(sig)));
 
   
-  plot(t, sig, '-');
-  ncplot.title('im_preemp.m');
+  plot(t_us, sig, '-');
+  ncplot.title({'im_preemp.m'; fname});
+  xlabel('time (us)');
 
 
 
@@ -132,7 +150,7 @@ function im_preemp
       sig2(k) = v;
       % fprintf('%g %g\n', frame(k), v);
     end
-    plot(t, sig2, '-');
+    plot(t_us, sig2, '-');
     ncplot.txt(sprintf('filt const bitwid %d\n', filt_const_w));
     ncplot.title('im_preemp.m');
   end  
@@ -152,7 +170,7 @@ function im_preemp
   %  sig = [sig; sig];
   %  sig = sig(:);
 
-  fname = 'preemph.bin';
+
   fid=fopen(fname, 'w', 'l', 'US-ASCII');
   if (fid<0)
     fprintf('ERR: cant open file\n');

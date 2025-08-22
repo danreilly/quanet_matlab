@@ -439,6 +439,7 @@ classdef ncplot
       opt = util.set_field_if_undef(opt, 'color', cq(1,:));
       plot(x,y,'.','Markersize',opt.markersize,'Color',opt.color);
       mx=max([abs(x);abs(y)]);
+      if (mx==0) mx=1; end
       xlim([-mx mx]);
       ylim([-mx mx]);
       line([0 0],[-1 1]*mx,'Color','green');

@@ -2,10 +2,10 @@ function show(meas_fnames)
   mname='qnet_show.m';	 
   import nc.*;
 
+
   ini=vars_class('tvars.txt');
 
   if (nargin<1)
-      '<1'
     meas_fnames = ini.ask_fname('measurement file(s)', ...
 			        'meas_fname', 1);
     if (~iscell(meas_fnames))
@@ -29,9 +29,9 @@ function show(meas_fnames)
     if (isempty(meas_fnames))
       return;
     end
+    ini.save;
   end
 
-  ini.save;
 
   if (~iscell(meas_fnames))
     meas_fnames={meas_fnames};
@@ -45,6 +45,7 @@ function show(meas_fnames)
   err=0;
   for mi=1:length(meas_fnames)
     fname = meas_fnames{mi};
+
     f_path = fileparts(fname);
     mvars{mi} = vars_class(fname);
     if (mi==1)
@@ -105,18 +106,22 @@ function show(meas_fnames)
     fprintf('ERR: no data\n');
     return;
   end
-  beat_dur_us = mvars.get('beat_dur_us');
-  step_en   = mvars.get('step_en');
-  step_type = mvars.get('step_type');
-  step_amt  = mvars.get('step_amt');
+  beat_dur_us  = mvars.get('beat_dur_us');
+  beat_fdbk_en = mvars.get('step_en');
+  step_en      = mvars.get('step_en');
+  step_type    = mvars.get('step_type');
+  step_amt     = mvars.get('step_amt');
+  dsamp        = mvars.get('dsamp')
   time_us_col  = mvars.datahdr2col(data_hdr, 'time_us');
   beat_kHz_col = mvars.datahdr2col(data_hdr, 'beat_kHz');
   goal_kHz_col = mvars.datahdr2col(data_hdr, 'goal_kHz');
   err_kHz_col = mvars.datahdr2col(data_hdr, 'err_kHz');
   fm_col       = mvars.datahdr2col(data_hdr, 'fm');
+  gas_err_MHz_col = mvars.datahdr2col(data_hdr, 'gas_err_MHz');  
 
   if (time_us_col)
-    time_us = util.mod_unwrap(data(1:end, time_us_col),2^16);
+    %    time_us = util.mod_unwrap(data(1:end, time_us_col),2^16);
+    time_us = data(:, time_us_col);
     time_us = time_us-time_us(1);
   else
     fprintf('ERR: no time_us column');
@@ -148,21 +153,43 @@ function show(meas_fnames)
     desc='feedback goal step'; 
   end
 
-  
+  time_us(1)
+  time_us(end)
+
+  maxtime_s = time_us(end)*1e-6;
+  if (maxtime_s<1e-3)
+    time = time_us;
+    time_u = 'us';
+  elseif (maxtime_s<1)
+    time = time_us /1e3;
+    time_u = 'ms';
+  elseif (maxtime_s<60)    
+    time = time_us /1e6;
+    time_u = 's';
+  else
+    time = time_us /1e6 / 60;
+    time_u = 'min';    
+  end
+
+time(end)  
   ncplot.subplot(3,1);
 
   %  ncplot.subplot();
   %  plot(1:length(time_us),time_us, '.');
+
+
   
   ncplot.subplot();
-  plot(time_us, beat_kHz/1000, '.','Color',cq(1,:));
+  plot(time, beat_kHz/1000, '.','Color',cq(1,:));
   beat_goal_kHz = mvars.get('beat_goal_kHz');
-  if (beat_goal_kHz)
+  if (beat_goal_kHz && beat_fdbk_en)
     ncplot.txt(sprintf('beat goal %d kHz', beat_goal_kHz));
   end
-  ncplot.txt(sprintf('fdbk pd set %d actual %.1f us', beat_dur_us, mean(diff(time_us))));
-  xlim([0 time_us(end)]);
-  xlabel('time (us)');
+  ncplot.txt(sprintf('fdbk pd set %d actual %.1f us', beat_dur_us, mean(diff(time_us))/dsamp));
+  ncplot.txt(sprintf('   mean %.1f MHz', mean(beat_kHz/1000)));
+  ncplot.txt(sprintf('std dev %.1f MHz', std(beat_kHz/1000)));
+  xlim([0 time(end)]);
+  xlabel(sprintf('time (%s)', time_u));
   %  ylabel(sprintf('beat offset from %.3fMz (kHz)', beat_kHz(1)/1000));
   ylabel(sprintf('beat (MHz)'));
   ncplot.title([ttl; desc]);
@@ -177,7 +204,7 @@ function show(meas_fnames)
     ncplot.title([ttl; desc]);
   end
   
-  if (err_kHz_col)
+  if (err_kHz_col && beat_fdbk_en)
     ncplot.subplot();
     plot(time_us, err_kHz, '.', 'Color',cq(1,:));
     mse_kHz = sqrt(mean(err_kHz.^2));
@@ -190,10 +217,22 @@ function show(meas_fnames)
     ylabel('err (kHz)');
     ncplot.title([ttl; desc]);
   end
+
+  if (gas_err_MHz_col)
+    gas_err_MHz = data(:,gas_err_MHz_col);
+    ncplot.subplot();
+    plot(time, gas_err_MHz, '.', 'Color',cq(1,:));
+    mse_MHz = sqrt(mean(gas_err_MHz.^2));
+    ncplot.txt(sprintf('gas err mse %.f MHz', mse_MHz));
+    xlim([0 time(end)]);
+    xlabel(sprintf('time (%s)', time_u));
+    ylabel('gas err (MHz)');
+    ncplot.title([ttl; desc]);
+  end
   
   if (fm_col)
     ncplot.subplot();
-    plot(time_us, fm, '.','Color',cq(1,:));
+    plot(time, fm, '.','Color',cq(1,:));
     if (step_type=='f')
       ncplot.txt(sprintf('FM step %d DAC', step_amt));
     end
@@ -203,8 +242,8 @@ function show(meas_fnames)
         ncplot.txt(sprintf('feedback timeconst %d us', ...
                            beat_tc_us));
     end
-    xlim([0 time_us(end)]);
-    xlabel('time (us)');
+    xlim([0 time(end)]);
+    xlabel(sprintf('time (%s)', time_u));    
     ylabel('FM setting (DAC)');
     ncplot.title([ttl; desc]);
   end

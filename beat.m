@@ -3,7 +3,6 @@ function beat
   import nc.*;
 
   fprintf('This program measures or test beat freq stability  or phase lock\n');
-
   
   tvars=vars_class('tvars.txt');
   [dev_port idn]=tvars.ask_port('qna', 'dev_port', 115200);
@@ -58,7 +57,6 @@ function beat
     step_type='g';
     step_amt=0;
   end
-  dsamp = tvars.ask('downsampling', 'dsamp');
 
   if (step_type=='e')
     % want to see feedback start so turn off in case it was on.
@@ -66,8 +64,16 @@ function beat
     tc_us =tvars.ask('feedback timeconstant', 'tc_us', dev.settings.beat_tc_us);
     dev.set_beat_fbdk_tc_us(tc_us);
   end
-  
-  nsamps = tvars.ask('number of samples to capture', 'nsamps');
+
+  if (1)
+    dur_s = tvars.ask_dur_s('duration of test', 'dur_s');
+    nsamps = tvars.ask('number of samples to capture', 'nsamps');
+    dsamp = round(dur_s/nsamps / (dev.settings.beat_dur_us*1e-6));
+    fprintf('downsampling by %d, duration actually %s\n', dsamp, uio.dur(nsamps * dsamp * dev.settings.beat_dur_us*1e-6));
+  else
+    nsamps = tvars.ask('number of samples to capture', 'nsamps');
+    dsamp = tvars.ask('downsampling', 'dsamp');
+  end
   
   tvars.save();
   if (fdbk_en)
@@ -91,6 +97,7 @@ function beat
   ovars.set('step_en', step_en);
   ovars.set('step_type', step_type);
   ovars.set('step_amt', step_amt);
+  ovars.set('beat_fdbk_en', dev.settings.beat_en);
   ovars.set('beat_tc_us', dev.settings.beat_tc_us);
   ovars.set('beat_goal_kHz', dev.settings.beat_goal_kHz);
   %  ovars.set('calfile', calfile);
@@ -106,7 +113,9 @@ function beat
 
   
   dev=[];
-
+  ovars=[];
+  tvars=[];
+  
   fprintf('running show.m\n');
   show(fnf);
   

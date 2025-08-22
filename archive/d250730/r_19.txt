@@ -44,5 +44,5 @@ sig_minus_mon_dB = -10.6;
 ext_rat_dB = 19.8;
 opt_skip_frames = 1;
 body_ph_offset_deg = -90;
-body_adj_asamps = -25;
+body_adj_asamps = -30;
 annotation = 'alice sends to bob';

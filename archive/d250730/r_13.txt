@@ -45,3 +45,4 @@ opt_skip_frames = 1;
 body_ph_offset_deg = -90;
 body_adj_asamps = -30;
 annotation = 'alice sends to bob';
+ext_rat_dB = 0;

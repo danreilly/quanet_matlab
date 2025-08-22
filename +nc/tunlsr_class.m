@@ -176,10 +176,11 @@ classdef tunlsr_class < nc.ncdev_class
       end
     end
 
-    function [gas_freqs_Hz norm_xmit] = hcn_lookup(lines)
+    function [gas_freqs_Hz norm_xmit] = hcn_lookup(lines, p_Pa)
       % inputs:
       %   lines: vector of NIST gasline numbers in "P" region
       %          if a string, will print to screen (for interactive use)
+      %     p_Pa: pressure of cell in Pascals
       % returns:
       %   gas_freqs_Hz: center frequency of gas dip, or 0 if not found
       %   norm_xmit: normalized transmittance(range 0..1)
@@ -203,7 +204,7 @@ classdef tunlsr_class < nc.ncdev_class
 	    nist=tunlsr_class.nist_hcn(k,:);
 	    % fprintf(' nm %10.5f nm\n', nist(2));
 	    shift_nm_p_kPa = (nist(3)-nist(2))/13.3;
-	    shft_nm = shift_nm_p_kPa * (tunlsr_class.our_hcn_p_Pa/1000);
+	    shft_nm = shift_nm_p_kPa * (p_Pa/1000);
 %	    fprintf('line %d  sh %10.5f nm\n', lines(li), shft_nm);
 	    gas_wl_nm = nist(2) + shft_nm;
 	    % fprintf('nm %10.5f nm\n', gas_wl_nm);

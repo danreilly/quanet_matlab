@@ -11,7 +11,13 @@ Matlab programs:
     im_preemp.m - calculate im preemphasis profile, stores result in a file
        that can be downloaded into HDL.
 
- Test code.  Less important.
+ Calibration code
+ 
+  cal_gas.m      - measure HCN gaslines
+  cal_gas_show.m - calculate gasline params and gen calibration file
+  wcal.m         - write gas calibration file to QNA
+
+ Test code
 
   p2.m - analyze beat
   rp.m - plot data captured from Red Pitaya board

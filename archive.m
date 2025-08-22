@@ -75,11 +75,11 @@ function archive(arg)
     
   alice_txing = mvars.get('alice_txing',0);
   if (~alice_txing)
-    uio.pause('ERR: alice was not txing in this file\n');
+    fprintf('Note: alice was not txing in this file\n');
   end
 
-    other_file = mvars.get('data_in_other_file',0);
-    if (other_file==2)
+  other_file = mvars.get('data_in_other_file',0);
+  if (other_file==2)
       s = fileutils.nopath(fname);
       s(1)='d';
       s=fileutils.replext(s,'.raw');
@@ -193,68 +193,23 @@ function archive(arg)
   m12=mvars.get('m12',0);
   already_balanced = ((abs(m11-1)>.001)||(abs(m12)>.001));
 
-  qsdc_data_pos_asamps = mvars.get('qsdc_data_pos_asamps',0);
-  qsdc_data_len_asamps = mvars.get('qsdc_data_len_asamps',0);
-  qsdc_code_len_cbits = mvars.get('qsdc_code_len_cbits',10);
-  qsdc_data_is_qpsk = mvars.get('qsdc_data_is_qpsk',0);
-  qsdc_symbol_len_asamps = mvars.get('qsdc_symbol_len_asamps',4);
-  qsdc_bit_dur_syms = mvars.get('qsdc_bit_dur_syms',10);
-
-  fprintf('QSDC: data_pos_asamps   %d\n', qsdc_data_pos_asamps); 
-  fprintf('      data_len_asamps   %d (per frame)\n', qsdc_data_len_asamps); 
-  fprintf('      code_len_cbits    %d (per data bit)\n', qsdc_code_len_cbits);
-  fprintf('      symbol_len_asamps %d\n', qsdc_symbol_len_asamps); 
-  fprintf('      symbols per bit   %d\n', qsdc_bit_dur_syms);
-  fprintf('      is_qpsdk          %d\n', qsdc_data_is_qpsk);
-    
-    cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
-    cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
-        cipher_symlen_asamps;
-    cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;
-
-
-  if (0)    
-  % IQ SCATTERPLOT
-  ii = m(:,1);
-  qq = m(:,2);
-  ncplot.init();
-  [co,ch,coq]=ncplot.colors();
-  ncplot.subplot(1,2);
-  ncplot.subplot();
-  iqopt.markersize=1;
-
-  ncplot.iq(ii, qq, iqopt);
-  ncplot.title({fname_s; 'raw IQ scatterplot'});
-  n_rms = sqrt(mean(ii.^2 + qq.^2));
-  if (~isempty(host))
-    ncplot.txt(sprintf('%s', host));
-  end
-  if (1)
-    ncplot.txt(sprintf('num samples %d', length(ii)));
-    ncplot.txt(sprintf('mean I %.2f', mean(ii)));
-    ncplot.txt(sprintf('mean Q %.2f', mean(qq)));
-    % ncplot.txt(sprintf('filter %s', filt_desc));
-    ncplot.txt(sprintf('E radius %.1f ADCrms', n_rms));
-  end
-  if (already_balanced)
-    ncplot.txt('rebalanced by HDL');
-  end
-  figure(gcf());  
-  %  ncplot.subplot();
-  %  ncplot.invisible_axes();
-  end
-
-    
+  if (alice_txing)  
+    qsdc_data_pos_asamps = mvars.get('qsdc_data_pos_asamps',0);
+    qsdc_data_len_asamps = mvars.get('qsdc_data_len_asamps',0);
+    qsdc_code_len_cbits = mvars.get('qsdc_code_len_cbits',10);
+    qsdc_data_is_qpsk = mvars.get('qsdc_data_is_qpsk',0);
+    qsdc_symbol_len_asamps = mvars.get('qsdc_symbol_len_asamps',4);
+    qsdc_bit_dur_syms = mvars.get('qsdc_bit_dur_syms',10);
+    fprintf('QSDC: data_pos_asamps   %d\n', qsdc_data_pos_asamps); 
+    fprintf('      data_len_asamps   %d (per frame)\n', qsdc_data_len_asamps); 
+    fprintf('      code_len_cbits    %d (per data bit)\n', qsdc_code_len_cbits);
+    fprintf('      symbol_len_asamps %d\n', qsdc_symbol_len_asamps); 
+    fprintf('      symbols per bit   %d\n', qsdc_bit_dur_syms);
+    fprintf('      is_qpsdk          %d\n', qsdc_data_is_qpsk);
+  end    
 
   mean_pwr_dBm = mvars.get('mean_pwr_dBm', []);
   fprintf('mean_pwr_dBm %.2f (signal monitor power)\n', mean_pwr_dBm);
-  if (0) % ~isempty(mean_pwr_dBm))
-    mon_pwr_dBm = mvars.ask('monitor pwr (dBm)', 'monitor_pwr_dBm', -inf);
-    d=tvars.get('sig_minus_mon_dB',0);
-    sig_minus_mon_dB = mvars.ask('add what to monitor to get sig pwr', 'sig_minus_mon_dB',d);
-    mvars.set('sig_minus_mon_dB',sig_minus_mon_dB);
-    mean_pwr_dBm = mon_pwr_dBm + sig_minus_mon_dB;
-  end
 
   annotation = mvars.get('annotation','');
   if (~isempty(annotation))

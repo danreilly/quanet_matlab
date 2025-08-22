@@ -18,7 +18,7 @@ classdef fileutils
       [f_path, ~, ~]=fileparts(fname);
     end
     function f_root = nopath(fname)
-      % desc: returns filenamw with no path
+      % desc: returns filename with no path
       [~, f_name, f_ext]=fileparts(fname);
       f_root = [f_name f_ext];
     end
