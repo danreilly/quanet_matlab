@@ -55,73 +55,8 @@ function p(arg)
   
   fname_s = fileutils.fname_relative(fname,'log');
 
-
-  mvars = nc.vars_class(fname);
-
-
-  other_file = mvars.get('data_in_other_file',0);
-  if (other_file==2)
-      s = fileutils.nopath(fname);
-      s(1)='d';
-      s=fileutils.replext(s,'.raw');
-      fname2=[fileutils.path(fname) '\' s];
-      fprintf(' %s\n', fname2);
-      fid=fopen(fname2,'r','l','US-ASCII');
-      if (fid<0)
-        fprintf('ERR: cant open %s\n', fname2);
-      end
-      [m cnt] = fread(fid, inf, 'int16');
-      % class(m) is double
-      fclose(fid);
-      
-      aug = m<0;
-      for k=1:cnt
-        aug(k)=(m(k)<0); % bitget fails on negative numbers
-        if (aug(k))
-          m(k)= 2^15+m(k);
-        end
-        m(k)=bitset(m(k),15,0);
-        if (bitget(m(k),14))
-          m(k)=m(k)-2^14;
-        end
-      end
-      aug = reshape(aug,8,[]);
-      aug0=repmat(aug(1,:),4,1);
-      aug0=aug0(:);
-      aug1=repmat(aug(2,:),4,1);
-      aug1=aug1(:);
-      aug2=repmat(aug(3,:),4,1);
-      aug2=aug2(:);
-      aug3=repmat(aug(4,:),4,1);
-      aug3=aug3(:);
-      aug4=repmat(aug(5,:),4,1);
-      aug4=aug4(:);
-      aug5=repmat(aug(6,:),4,1);
-      aug5=aug5(:);
-
-
-       
-      
-      m = reshape(m, 2, cnt/2).';
-        % 'DBG here'
-        % m = reshape(m,cnt/2,2);      
-    elseif (other_file==1)
-      s = fileutils.nopath(fname);
-      s(1)='d';
-      fname2=[fileutils.path(fname) '\' s];
-      fprintf('  also reading %s\n', fname2);
-      fid=fopen(fname2,'r');
-        'DBG: reading ascii'
-      [m cnt] = fscanf(fid, '%g');
-      fclose(fid);
-      m = reshape(m, 2,cnt/2).';
-
-  else
-      m = mvars.get('data');
-  end
-  
+  [mvars m aug] = load_measfile(fname);
   if (isempty(m))
-    fprintf('\nERR: file contains no data\n');
     return;
   end
   
@@ -137,7 +72,7 @@ function p(arg)
   if (isempty(tx_same_hdrs))
     tx_same_hdrs = mvars.get('tx_same_hdrs',0);
   end
-  fprintf('rx same hdrs %d\n', tx_same_hdrs);
+  % fprintf('rx same hdrs %d\n', tx_same_hdrs);
   
   tx_0 = mvars.get('tx_0',0);
   
@@ -187,6 +122,7 @@ function p(arg)
   lfsr_rst_st = mvars.get('lfsr_rst_st', '50f');
   m11=mvars.get('m11',1);
   m12=mvars.get('m12',0);
+  annotation=mvars.get('annotation','');
   already_balanced = ((abs(m11-1)>.001)||(abs(m12)>.001));
   
 
@@ -209,19 +145,27 @@ function p(arg)
     ncplot.txt(sprintf('%s', host));
   end
   if (1)
+    if (~isempty(annotation))
+      ncplot.txt(annotation);
+    end
     ncplot.txt(sprintf('num samples %d', length(ii)));
     ncplot.txt(sprintf('mean I %.2f  std %.3f', mean(ii), i_std));
     ncplot.txt(sprintf('mean Q %.2f  std %.3f', mean(qq), q_std));
     % ncplot.txt(sprintf('filter %s', filt_desc));
     ncplot.txt(sprintf('pwr std %.1f ', std(p)));
     ncplot.txt(sprintf('E radius %.1f ADCrms', n_rms));
+
   end
   if (already_balanced)
     ncplot.txt('rebalanced by HDL');
   end  
   %  ncplot.subplot();
   %  ncplot.invisible_axes();
-  uio.pause('tst');
+  k=tvars.ask_yn('go on', 'go_on',1);
+  tvars.save();
+  if (~k)
+    return;
+  end
 
 
     
