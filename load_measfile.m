@@ -16,7 +16,7 @@ function [mvars m aug] = load_measfile(fname)
     s(1)='d';
     s=fileutils.replext(s,'.raw');
     fname2=[fileutils.path(fname) '\' s];
-    fprintf(' %s\n', fname2);
+    fprintf('    and %s\n', fname2);
     fid=fopen(fname2,'r','l','US-ASCII');
     if (fid<0)
       fprintf('ERR: cant open %s\n', fname2);

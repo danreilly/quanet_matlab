@@ -47,21 +47,23 @@ function p(arg)
     end
   end
   if (isempty(fname))  
-    fname = tvars.ask_fname('data file', dflt_fname_var);
+    fname = tvars.ask_fname('measurement file', dflt_fname_var);
   end
   tvars.save();
 
-
-  
-  fname_s = fileutils.fname_relative(fname,'log');
 
   [mvars m aug] = load_measfile(fname);
   if (isempty(m))
     return;
   end
+  fname_s = fileutils.fname_relative(fname,'log');
+  aug0=reshape(repmat(aug(1,:),4,1),[],1);
+  aug1=reshape(repmat(aug(2,:),4,1),[],1);
+  aug2=reshape(repmat(aug(3,:),4,1),[],1);
+  aug3=reshape(repmat(aug(4,:),4,1),[],1);
+  aug4=reshape(repmat(aug(5,:),4,1),[],1);
+  aug5=reshape(repmat(aug(6,:),4,1),[],1);
   
-
-
 
 
   
@@ -161,7 +163,9 @@ function p(arg)
   end  
   %  ncplot.subplot();
   %  ncplot.invisible_axes();
-  k=tvars.ask_yn('go on', 'go_on',1);
+
+  %k=tvars.ask_yn('go on', 'go_on',1);
+  k=1;
   tvars.save();
   if (~k)
     return;
@@ -224,7 +228,7 @@ function p(arg)
 
   cipher_frame_qty=0;
   cipher_en = mvars.get('cipher_en',0);
-
+  
 
   cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
   cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
@@ -333,7 +337,8 @@ function p(arg)
   
   do_eye=1;
   if (~already_balanced)
-    calc_rebal=0;
+    
+    calc_rebal=tvars.ask_yn('recalc imabal params ', 'calc_rebal', use_filt);
 
     if (calc_rebal)
       res = calc_rebalance(ii, qq);
@@ -446,15 +451,24 @@ function p(arg)
     uio.pause();    
   end
 
-  if (1)
+  if (1) % BEFORE MAIN LOOP
+
     if (1)
       lfsr.reset();      
       hdr = lfsr.gen(hdr_len_bits);
       hdr = repmat(hdr.',osamp,1);
       hdr = hdr(:)*2-1;
-      ci = corr_circ(hdr, ii);
-      cq = corr_circ(hdr, qq);
+      ci = corr(hdr, ii);
+      cq = corr(hdr, qq);
       c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
+      if (0)
+      p  = sqrt(ii.^2 + qq.^2);
+      cp = corr(ones(1,length(hdr)),p);
+      cp = cp*max(ii)/max(cp);
+      c2 = c2 ./ cp;
+      c2 = c2*max(ii)/max(c2);
+      end
+      
       c2_max=zeros(10,1);
       s_i=0;
       f_l=floor(length(ii)/frame_pd_asamps); % for each frame
@@ -463,13 +477,15 @@ function p(arg)
         frame_off=(f_i-1)*frame_pd_asamps;
         rng = (1:frame_pd_asamps)+frame_off;
         [mx mxi] = max(c2(rng));
-        % fprintf('%d %d %d\n', f_i, round(mx), mxi);
+        fprintf('idx %d = %s   mx %d  mxi %d\n', frame_off+1, uio.dur(frame_off/asamp_Hz), round(mx), mxi);
         c2_max(f_i)=mx;
         if (f_i==4)
           s=std(c2_max(1:4));
           mx_m=mean(c2_max(1:4));
+          % fprintf('std %g\n', s);
         elseif (f_i>4)
-          k =  mx > (mx_m+s*4);
+          c2_slope = c2(rng(1)-1+mxi) - c2(rng(1)-2+mxi);
+          k =  (mx > (mx_m+s*4)) && (c2_slope > 200);
           if (k==1)
             s_i = rng(1)-1+mxi;
             opt_skip = frame_off/frame_pd_asamps;
@@ -479,30 +495,54 @@ function p(arg)
       end
     end
     
-    % plot first frame (not main in loop yet)
-    ncplot.subplot(2,1);
-    ncplot.subplot();
+    % TIME DOMAIN PLOT, EVERYTHING (not main in loop yet)
     if (1)
+      ncplot.subplot(2,1);
+      ncplot.subplot();
       t_us = 1e6*(0:(l-1)).'/asamp_Hz;
       plot(t_us,ii,'.','Color',coq(1,:));
       plot(t_us,qq,'.','Color',coq(2,:));
-      % plot(t_us,c2,'-','Color','red');      
+      % plot(t_us,cp,'-','Color','yellow');
+      plot(t_us,c2,'-','Color','red');
       if (s_i)
         line(t_us(s_i)*[1 1],[0 max(ii)],'Color','red');
-        ncplot.txt(sprintf('hdr at idx %d = %d = %s', s_i, mod(s_i-1,frame_pd_asamps)+1, uio.dur(t_us(s_i))));
+        ncplot.txt(sprintf('pilot at idx %d = %d = %s', s_i, mod(s_i-1,frame_pd_asamps)+1, uio.dur(t_us(s_i)/1e6,3)));
+        if (~is_alice)
+          s_i_b=ceil((s_i-1)/4)*4+1;
+          if (s_i_b ~= s_i)
+            ncplot.txt(sprintf('   BUT ideally at idx %d (add %d)', s_i_b, s_i_b-s_i));
+          end
+        end
       end
       mx = max([ii;qq]);
       if (is_alice)
-        plot(t_us, aug5*mx*.5, '-', 'Color','magenta'); % pwr_event_iso
-        plot(t_us, aug3*mx,    '-', 'Color','black');  % hdr_found
+        if (any(aug5))
+          plot(t_us, aug5*mx*.5, '-', 'Color','magenta'); % pwr_event_iso
+        else
+          ncplot.txt('no pwr_event_iso');
+        end
+        plot(t_us, aug3*mx,    '-', 'Color','black');   % hdr_found
+      else
+        if (any(aug4))
+          idx=find(aug4,1);
+          %          plot(t_us(idx)*[1 1], [0 mx], '-','Color', 'green');
+          plot(t_us, aug4*mx, '-', 'Color', 'green');
+          ncplot.txt(sprintf('frame_go_dlyd at idx %d = %s', idx, uio.dur(t_us(idx))));
+          if (s_i && ~is_alice)
+            if (idx == s_i_b-16)
+              ncplot.txt('   which is GOOD');
+            else
+              ncplot.txt(sprintf('  BUT ideally at idx %d (add %d)', s_i_b-16, s_i_b-16-idx));
+            end
+          end
+        end
       end
       xlabel('time (us)');
       y_mx = max(abs(ii));
-      ncplot.title('time series I & Q');
+      ncplot.title({'time series I & Q ... ALL samples'; fname_s});
       ncplot.subplot();
 
-
-      opt_offset_asamps = uio.ask('analysis offset (asamps)', s_i-16);
+      opt_offset_asamps = uio.ask('analysis offset (asamps)', max(0,s_i-16));
 
     end
   else
@@ -763,18 +803,16 @@ function p(arg)
       cipher_bit_cnt=0;
 
 
-      
+opt_offset_asamps      
       sweep_angs = [];
       for f_i=1:nn % for each frame
         % frame_off is zero based.
-
+        fprintf('frame %d\n', f_i);
         frame_off=(f_i-1)*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps + opt_offset_asamps;
         if (frame_off+frame_pd_asamps > length(ii))
           break;
         end
         rng = (1:frame_pd_asamps)+frame_off;
-
-        
 
 
         if (find_hdr)
@@ -792,6 +830,8 @@ function p(arg)
 
 
           % CORRELATE FOR PILOT or PROBE
+          size(rng)
+          size(hdr)
           ci = corr(hdr, ii(rng));
           cq = corr(hdr, qq(rng));
           c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
@@ -807,8 +847,8 @@ function p(arg)
             end
           elseif (mxi_occ >= mxi_l)
             if (mxi ~= mxi_med)
-              fprintf('WARN: corr max in bin %d not %d\n', ...
-                      mxi, mxi_med);
+              fprintf('WARN: corr max in bin %d not %d.  Adj sync dly by %d\n', ...
+                      mxi, mxi_med, mxi_med-mxi);
             end
             mxv=c2(mxi);
           end
@@ -889,6 +929,7 @@ function p(arg)
             plot(t_ms, aug0(rng)*mx,    '-', 'Color','green'); % pwr_det
             plot(t_ms, aug5(rng)*mx*.5, '-', 'Color','magenta'); % pwr_event_iso
           end
+          size(aug1)
           idx=find(aug1(rng),1);
           if (idx)
             plot(t_ms, aug1(rng)*mx, '-', 'Color','blue');   % dbg_hdr_det
@@ -945,6 +986,7 @@ function p(arg)
 
           uio.pause('review frame');
 
+          if (find_hdr)
           % DEROTATE HDR AND FIND MEAN SEPARATION OF BPSK CONSTELLATION.
           iiqq = geom.rotate(-hdr_ph_deg*pi/180, [ii(h_srng).';qq(h_srng).']);
           ii_s = iiqq(1,:).';
@@ -962,7 +1004,8 @@ function p(arg)
           dist = sqrt((i1_m-i0_m).^2+(q1_m-q0_m)^2);
           ncplot.txt(sprintf('mean dist %.1f', dist));
           ncplot.title({'DEROTATED pilot'; fname_s});
-          uio.pause('review derotated hdr');          
+          uio.pause('review derotated hdr');
+          end
         end % if show all
 
         % CIRCLE FIT FOR WHEN DOING SINE MODULATION FOR IMBALANCE CALIBRATION

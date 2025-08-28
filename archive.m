@@ -57,83 +57,32 @@ function archive(arg)
   if (isempty(fname))  
     fname = tvars.ask_fname('data file', dflt_fname_var);
   end
-%^  pname = fileparts(fname);
-%  pname_pre = fileparts(pname);
-  %  if (~strcmp(pname, pname_pre))
-  %   'new dir'
-    % tvars.set('max_fnum', 0);
-    %  end
   tvars.save();
 
-
   
+
+
+
+  [mvars m aug] = load_measfile(fname);
+  if (isempty(m))
+    fprintf('ERR: there is no data in this file\n');
+    return;
+  end
+  fname = mvars.name;
   fname_s = fileutils.fname_relative(fname,'log');
-  if (1)
-    mvars = nc.vars_class(fname);
-    use_lfsr = mvars.get('use_lfsr',1);
-    num_itr  = mvars.get('num_itr',1);
-    
   alice_txing = mvars.get('alice_txing',0);
+
+
+  use_lfsr = mvars.get('use_lfsr',1);
+  num_itr  = mvars.get('num_itr',1);
+    
+
   if (~alice_txing)
     fprintf('Note: alice was not txing in this file\n');
   end
-
-  other_file = mvars.get('data_in_other_file',0);
-  if (other_file==2)
-      s = fileutils.nopath(fname);
-      s(1)='d';
-      s=fileutils.replext(s,'.raw');
-      fname2=[fileutils.path(fname) '\' s];
-      fprintf(' %s\n', fname2);
-      fid=fopen(fname2,'r','l','US-ASCII');
-      if (fid<0)
-        fprintf('ERR: cant open %s\n', fname2);
-      end
-      [m cnt] = fread(fid, inf, 'int16');
-      % class(m) is double
-      fclose(fid);
-      
-      aug = m<0;
-      for k=1:cnt
-        aug(k)=(m(k)<0); % bitget fails on negative numbers
-        if (aug(k))
-          m(k)= 2^15+m(k);
-        end
-        m(k)=bitset(m(k),15,0);
-        if (bitget(m(k),14))
-          m(k)=m(k)-2^14;
-        end
-      end
-
-      m = reshape(m, 2, cnt/2).';
-        % 'DBG here'
-        % m = reshape(m,cnt/2,2);      
-    elseif (other_file==1)
-      s = fileutils.nopath(fname);
-      s(1)='d';
-      fname2=[fileutils.path(fname) '\' s];
-      fprintf('  also reading %s\n', fname2);
-      fid=fopen(fname2,'r');
-        'DBG: reading ascii'
-      [m cnt] = fscanf(fid, '%g');
-      fclose(fid);
-      m = reshape(m, 2,cnt/2).';
-
-    else
-      m = mvars.get('data');
-    end
-  else
-    fid=fopen(fname,'r');
-    [m cnt] = fscanf(fid, '%g');
-    fclose(fid);
-    m = reshape(m, 2,cnt/2).';
-    %  frame_pd_samps = 3700;
-    frame_pd_asamps = 2464;
-    hdr_len_bits  = 64;
-  end
   tvars.save();  
 
-  use_lfsr = 1;
+
 
   
 
@@ -181,10 +130,10 @@ function archive(arg)
 
 
     
-    asamp_Hz = mvars.get('asamp_Hz', 0);
-    if (asamp_Hz==0)
-      asamp_Hz = mvars.get('fsamp_Hz', 1.233333333e9);
-    end
+  asamp_Hz = mvars.get('asamp_Hz', 0);
+  if (asamp_Hz==0)
+    asamp_Hz = mvars.get('fsamp_Hz', 1.233333333e9);
+  end
 
   tx_hdr_twopi = mvars.get('tx_hdr_twopi',0);
   host = mvars.get('host','');
@@ -233,6 +182,12 @@ function archive(arg)
     dstdir = fullfile('archive', datedir);
     fileutils.ensure_dir(dstdir);
     fname_dst  = fullfile('archive', datedir, fileutils.nopath(fname));
+
+    s = fileutils.nopath(fname);
+    s(1)='d';
+    s=fileutils.replext(s,'.raw');
+    fname2=[fileutils.path(fname) '\' s];
+    
     fname2_dst = fullfile('archive', datedir, fileutils.nopath(fname2));
     r_copy(fname, fname_dst);
     r_copy(fname2, fname2_dst);
