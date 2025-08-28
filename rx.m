@@ -269,7 +269,11 @@ function rx(arg)
   if (~isempty(mean_pwr_dBm)) 
     mean_pwr_dBm = mvars.ask('mean signal pwr (dB,)', 'mean_pwr_dBm', -inf); %OBSOLETE
   else
-    mon_pwr_dBm = mvars.ask('monitor pwr (dBm)', 'monitor_pwr_dBm', -inf);
+    if (in_archive)
+      mon_pwr_dBm = mvars.get('monitor_pwr_dBm', -inf);
+    else
+      mon_pwr_dBm = mvars.ask('monitor pwr (dBm)', 'monitor_pwr_dBm', -inf);
+    end
     body_rat_dB = mvars.get('body_rat_dB',0);
     if (body_rat_dB)
       ext_rat_dB = mvars.get('ext_rat_dB',0);

@@ -1,4 +1,4 @@
-fname = 'C:\reilly\proj\quanet\quanet_matlab\log\d250826\d_23.raw';
+fname = 'C:\reilly\proj\quanet\quanet_matlab\archive\d250827\r_30.txt';
 mean_before_norm = 0;
 max_fnum = 2;
 use_filt = 0;
@@ -73,7 +73,7 @@ calgas_xqna1_d250814_05.txt_fname = 'log\d250814\calgas_xqna1_d250814_05.txt';
 calgas_xqna1_d250818_05.txt_fname = 'log\d250818\calgas_xqna1_d250818_05.txt';
 slope_dur_ns = 390;
 go_on = 1;
-first_frame_idx = 10677;
+first_frame_idx = 7285;
 cheat = 0;
 qsdc_data_pos_asamps = 224;
 search = 0;
