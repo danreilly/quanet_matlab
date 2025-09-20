@@ -11,6 +11,7 @@ classdef tcpclient_class < handle
   % instance members
   properties
     soc_h
+    err
     Timeout % s   can this be lowercase?
   end
 
@@ -24,10 +25,10 @@ classdef tcpclient_class < handle
     function me = tcpclient_class(ipaddr, port)
       % desc: Opens the specified local or remote serial port.
       % inputs:
-      [err soc_h] = nc.tcpclient_mex(0, ipaddr, port);
-      if (err)
-        error(sprintf('cannot connect to %s:%d', ipaddr, port));
-	soc_h=-1;  % should be -1 anyway, but just in case.
+      [me.err soc_h] = nc.tcpclient_mex(0, ipaddr, port);
+      if (me.err)
+        % error(sprintf('cannot connect to %s:%d', ipaddr, port));
+	soc_h = -1;  % should be -1 anyway, but just in case.
       end
       me.soc_h=soc_h;
     end
@@ -38,8 +39,10 @@ classdef tcpclient_class < handle
     
     % DESTRUCTOR
     function delete(me)
-      fprintf('DBG: disconnecting\n');
-      err = nc.tcpclient_mex(4, me.soc_h);
+    % fprintf('DBG: disconnecting\n');
+      if (me.isopen())
+        me.close();
+      end
     end
 
     % PROPERTY SET METHODS
@@ -47,19 +50,29 @@ classdef tcpclient_class < handle
       me.Timeout = timo_s;
       err = nc.tcpclient_mex(3, me.soc_h, 'Timeout', timo_s);
       if (err)
-        printf('ERR: fauled to set property\n');
+        fprintf('ERR: fauled to set property  err=%d\n', err);
       end
     end
-
+    
+    function str = get_errmsg(me)
+      str = nc.tcpclient_mex(6);
+    end
+    
+    function close(me)
+      err = nc.tcpclient_mex(4, me.soc_h);
+      me.soc_h=-1;
+    end
+    
     function [n_sent, err]= send(me, data)
       [n_sent, err]= nc.tcpclient_mex(1, me.soc_h, typecast(data(:).','uint8'));
     end
 
-    function data = recv(me, nobjs, classstr)
+    function [data err] = recv(me, nobjs, classstr)
     % data will be uint8.  TIP: use typecast()
       if (~isnumeric(nobjs))
         error('tcpclient_classs.recv(nobjs, classstr): nobjs must be numeric');
       end
+      err=0;
       nobjs=double(nobjs); % in case it's int32 or something like that
       if (nargin<3)     nbytes = nobjs;
       elseif (strcmp(classstr,'int32')||strcmp(classstr,'uint32')) nbytes = nobjs*4;

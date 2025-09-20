@@ -28,9 +28,9 @@ function cal_gas
 
   is_tunlsr=0;
   is_qna=0;
-  if (strcmp(idn.name,'qna'))
+  if (strcmp(idn.name,'qna1'))
     is_qna=1;
-    dut=qna_class(port);
+    dut=nc.qna1_class(port);
   else
     is_tunlsr=1;
     dut=tunlsr_class(port);

@@ -14,6 +14,7 @@ function [ii qq] = decipher(ii, qq, mvars, tvars)
   cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
   cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
       cipher_symlen_asamps;
+  
   cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;
   
   cipher_lfsr = lfsr_class(hex2dec('280001'), hex2dec('abcde'));
@@ -24,7 +25,8 @@ function [ii qq] = decipher(ii, qq, mvars, tvars)
   f_l=floor((length(ii)+1-ffi)/frame_pd_asamps); % for each frame
 
 
-  fprintf('cipher len %d asamps\n', cipher_len_asamps);
+  fprintf('cipher len %d asamps per frame\n', cipher_len_asamps);
+  fprintf('           %d bits per frame\n', cipher_len_bits);
   
   for f_i=1:f_l % for each frame
     frame_off=(f_i-1)*frame_pd_asamps + ffi-1; % 0 based

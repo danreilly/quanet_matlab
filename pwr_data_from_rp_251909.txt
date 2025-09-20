@@ -1,0 +1,198 @@
+**************
+for sending of zeroes.bit
+
+hread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.035051
+ body 0.000721
+ mean 0.006373
+ ext 27.877121
+ brat -20.077785
+
+thread ending
+root@rp-f0ca28:~/rp# ./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.035322
+ body 0.000988
+ mean 0.006634
+ ext 20.310301
+ brat -12.671442
+
+
+t@rp-f0ca28:~/rp# ./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.035891
+ body 0.000743
+ mean 0.006600
+ ext 26.548096
+ brat -18.813560
+
+thread ending
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.036587
+ body 0.000078
+ mean 0.006231
+ ext 1000.000000
+ brat nan
+
+
+
+2:26pm after 15min after taking r_64..66:
+root@rp-f0ca28:~/rp# !!
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.039662
+ body 0.002833
+ mean 0.009008
+ ext 12.550291
+ brat -5.853045
+
+root@rp-f0ca28:~/rp# ./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.038291
+ body 0.003735
+ mean 0.009379
+ ext 10.884151
+ brat -4.531343
+ 
+root@rp-f0ca28:~/rp# !!
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.039325
+ body 0.003086
+ mean 0.009105
+ ext 12.032273
+ brat -5.422960
+
+
+oot@rp-f0ca28:~/rp# !./qrp
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.039152
+ body 0.003582
+ mean 0.009433
+ ext 11.204643
+ brat -4.780374
+
+thread ending
+********************************
+for round trip meas r_85,r_85 at 6:57
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.038466
+ body 0.001560
+ mean 0.007710
+ ext 16.255447
+ brat -8.959051
+
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.037534
+ body 0.002356
+ mean 0.008066
+ ext 13.385093
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.037483
+ body 0.002400
+ mean 0.008085
+ ext 13.268546
+ brat -6.311802
+
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.037855
+ body 0.002344
+ mean 0.008116
+ ext 13.455127
+ brat -6.473090
+
+
+**********************
+reduced Alice's overdriving of modulator. added 6dB.
+sent Zeros.bin using cipher.
+
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.033394
+ body 0.001707
+ mean 0.006819
+ ext 14.972728
+ brat -7.714976
+
+DBG1
+rsp: dark 0.000665
+ hdr 0.033854
+ body 0.001740
+ mean 0.006939
+ ext 14.898280
+ brat -7.663481
+
+
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.033783
+ body 0.001997
+ mean 0.007133
+ ext 13.955657
+ brat -6.862782
+
+root@rp-f0ca28:~/rp# root@rp-f0ca28:~/rp# !!
+./qrp e stat
+QRP v1.
+exec1: stat
+thread started
+DBG1
+rsp: dark 0.000665
+ hdr 0.033617
+ body 0.001784
+ mean 0.006923
+ ext 14.690200
+ brat -7.475838
+
+

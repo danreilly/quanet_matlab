@@ -1,0 +1,14 @@
+filetype = 'rebal';
+engineer = [];
+host = 'zcu1';
+serialnum = [];
+hwver = [];
+fwver = [];
+date = '17-Sep-2025 10:45:18';
+date_concise = '250917';
+srcfile = 'C:\reilly\proj\quanet\quanet_matlab\log\d250917\r_16.txt';
+i_off = -2;
+q_off = -13;
+i_fact = 1;
+q_fact = 1.93716762;
+ang_deg = -86.3178691;

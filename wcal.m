@@ -53,9 +53,12 @@ function wcal(arg)
 
   is_tunlsr=0;
   is_qna=0;
-  if (strcmp(idn.name,'qna'))
+  if (strcmp(idn.name,'qna1'))
     is_qna=1;
-    dut=qna_class(port);
+    dut=qna1_class(port);
+  elseif (strcmp(idn.name,'qna2'))
+    is_qna=1;
+    dut=qna2_class(port);
   else
     is_tunlsr=1;
     dut=tunlsr_class(port);

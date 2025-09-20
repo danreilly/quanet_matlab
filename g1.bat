@@ -1,4 +1,7 @@
 @echo off
+echo.
+echo  FROM BOB (#1)
+echo.
 
 for /F "TOKENS=2 DELIMS=/ " %%A in ('date /T') do set M=%%A
 for /F "TOKENS=3 DELIMS=/ " %%A in ('date /T') do set D=%%A

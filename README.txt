@@ -8,11 +8,14 @@ Matlab programs:
     rx.m - processes IQ samples of unencrypted messages sent from Alice to Bob.
            Currently only computes symbol BER.
 
+    genhex.m - generate hex file for hdl simulation from IQ sample file
+
     im_preemp.m - calculate im preemphasis profile, stores result in a file
        that can be downloaded into HDL.
 
  Calibration code
- 
+
+  cal_imbal.m    - calibrate IQ imbalance
   cal_gas.m      - measure HCN gaslines
   cal_gas_show.m - calculate gasline params and gen calibration file
   wcal.m         - write gas calibration file to QNA

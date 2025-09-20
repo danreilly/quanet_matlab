@@ -1,4 +1,4 @@
-function p(arg)
+function cal_imbal(arg)
   import nc.*
   mname='p.m';
 
@@ -19,7 +19,6 @@ function p(arg)
  
   fname='';
   dflt_fname_var = 'fname';
-
 
 
   if (opt_fnum>=0) 
@@ -67,7 +66,6 @@ function p(arg)
   aug5=reshape(repmat(aug(6,:),4,1),[],1);
   aug6=reshape(repmat(aug(7,:),4,1),[],1);
   aug7=reshape(repmat(aug(8,:),4,1),[],1);
-  qsdc_start_idx=find(aug4,1);
   
 
 
@@ -131,9 +129,18 @@ function p(arg)
   m12=mvars.get('m12',0);
   annotation=mvars.get('annotation','');
   already_balanced = ((abs(m11-1)>.001)||(abs(m12)>.001));
-  meas_noise = mvars.get('meas_noise',0);
 
-  % IQ SCATTERPLOT ALL
+  if (already_balanced)
+    fprintf('\nERR: HDL registers are already doing rebalancing\n');
+    fprintf('     Imbalance calibration must be done when HDL does not rebalance\n');
+    fprintf('     run   u cal norebal\n');
+    return;
+  end
+    
+    
+  
+
+  % IQ SCATTERPLOT
   ii = m(:,1);
   qq = m(:,2);
   ncplot.init();
@@ -160,46 +167,42 @@ function p(arg)
     ncplot.txt(sprintf('mean Q %.2f  std %.3f', mean(qq), q_std));
     % ncplot.txt(sprintf('filter %s', filt_desc));
     ncplot.txt(sprintf('pwr std %.1f ', std(p)));
-    ncplot.txt(sprintf('sqrt(<I^2+Q^2>) %.1f ADCrms', n_rms));
+    ncplot.txt(sprintf('E radius %.1f ADCrms', n_rms));
   end
   if (already_balanced)
     ncplot.txt('rebalanced by HDL');
   end
+
+
+  
   %  ncplot.subplot();
   %  ncplot.invisible_axes();
 
-  
   tvars.save();
-
+  find_hdr=0;
     
-    calc_sweep_ang= mvars.get('tx_mem_circ',0);
-    if (calc_sweep_ang)
-      fprintf('Calculating sweep angle because tx_mem_circ=1\n');
-      find_hdr=0;
-    else
-      find_hdr = ~meas_noise;
-      %      find_hdr = tvars.ask_yn('find probes or pilots','find_hdr',0);
-      calc_sweep_ang= ~find_hdr;
-    end
-    if (calc_sweep_ang)
-      frame_pd_asamps = floor(frame_pd_asamps/10);
-    end
+  calc_sweep_ang= mvars.get('tx_mem_circ',0);
+  if (calc_sweep_ang)
+    fprintf('Calculating sweep angle because tx_mem_circ=1\n');
+  else
+    calc_sweep_ang= ~find_hdr;
+  end
+  if (calc_sweep_ang)
+    frame_pd_asamps = floor(frame_pd_asamps/10);
+  end
     
     
   tvars.save();  
 
 
 
-  if (meas_noise)
-    figure(gcf());
-    return;
-  end
 
 
 
 
 
   
+  if (0)
   mean_pwr_dBm = mvars.get('mean_pwr_dBm', []);
   if (~isempty(mean_pwr_dBm))
     mean_pwr_dBm = mvars.ask('mean signal pwr (dB,)', 'mean_pwr_dBm', -inf);
@@ -211,24 +214,20 @@ function p(arg)
     mean_pwr_dBm = mon_pwr_dBm + sig_minus_mon_dB;
   end
   mvars.save();
+  end
 
-
-
-  
   cipher_frame_qty=0;
   cipher_en = mvars.get('cipher_en',0);
-  tx_same_cipher = mvars.get('tx_same_cipher',0);
   
 
   cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
   cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
       cipher_symlen_asamps;
   cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;
-  fprintf('cipher_len %d bits = %d asamps\n', ...
-          cipher_len_bits, cipher_len_asamps);
-  
 
   
+  
+
   
   lfsr_rst_st = mvars.get('lfsr_rst_st', '50f');
   fprintf('lfsr rst st x%s\n', lfsr_rst_st);
@@ -237,14 +236,11 @@ function p(arg)
   cipher_lfsr = lfsr_class(hex2dec('280001'), hex2dec('abcde'));
   % cipher_lfsr = lfsr_class(hex2dec('280001'),    hex2dec('aabbc'));
 
+  
 
   
-  sim_hdl.do = tvars.ask_yn('simulate HDL processing', 'sim_hdl');
-  if (sim_hdl.do)
-    sim_hdl.num_lsb_discard = tvars.ask('number of LSBs to discard', 'num_lsb_discard');
-    sim_hdl.mag_w = tvars.ask('bitwidth of magnitudes', 'mag_w');
-    sim_hdl.num_slices = 4;
-  end
+  sim_hdl.do = 0;
+
   tvars.save();
 
 
@@ -308,9 +304,9 @@ function p(arg)
     tit='RZ Correlation';
   end
 
-  ncplot.init();  
-  ncplot.subplot(1,2);
-  figure(gcf());
+  %  ncplot.init();  
+  %  ncplot.subplot(1,2);
+
 
   
   filt_desc='none';
@@ -322,61 +318,105 @@ function p(arg)
 
 
 
-%'DJSHD'
-%already_balanced=0
+
+
   
   do_eye=1;
-  if (~already_balanced)
 
-    calc_rebal=0;
+  figure(gcf());    
 
-    if (strcmp(host,'zcu1'))
-      res.i_off = -4;
-      res.q_off = -15;
-      res.th_deg = -78.475;
-      res.i_factor = 1;
-      res.q_factor = 1.39656;
-      fprintf('using default REBAL for ZCU1\n');
-    else
-      res.i_off = -2;
-      res.q_off = -10;
-      res.th_deg = 179;
-      res.i_factor = 1;
-      res.q_factor = 1.08;
-      fprintf('using default REBAL for ZCU2\n');
-    end
-    i_off = res.i_off;
-    q_off = res.q_off;
-    th_rad=res.th_deg*pi/180;
-    c=cos(th_rad);
-    s=sin(th_rad);
-    im2=[res.i_factor 0;0 res.q_factor]*[c s;-s c]*[ii+i_off qq+q_off].';
-    mx=max(abs(im2(:)));
-    ii = im2(1,:).';
-    qq = im2(2,:).';
-    if (sim_hdl.do)
-      ii=round(ii);
-      qq=round(qq);
-    end
-    radius_mean=sqrt(mean(ii.^2+qq.^2));
-    
-    ncplot.subplot();
-    ncplot.iq(ii,qq,iqopt);
-    ncplot.txt(sprintf('qnic %s', host));
-    ncplot.txt(sprintf('sqrt(<I^2+Q^2>) %.1f ADC', radius_mean));
-    ncplot.txt(sprintf('hdr twopi %d', mvars.get('tx_hdr_twopi',0)));
 
-    %   xlim([-1.1 1.1]*mx);    ylim([-1.1 1.1]*mx);
-    ncplot.title({fname_s; 'Corrected IQ scatterplot (all samples)'});
-    uio.pause();
+
+  res = calc_rebalance(ii, qq);
+  
+  i_off = res.i_off;
+  q_off = res.q_off;
+  th_rad=res.th_deg*pi/180;
+  c=cos(th_rad);
+  s=sin(th_rad);
+  im2=[res.i_factor 0;0 res.q_factor]*[c s;-s c]*[ii+i_off qq+q_off].';
+  mx=max(abs(im2(:)));
+  ii = im2(1,:).';
+  qq = im2(2,:).';
+  if (sim_hdl.do)
+    ii=round(ii);
+    qq=round(qq);
   end
+  radius_mean=sqrt(mean(ii.^2+qq.^2));
+  
+  ncplot.subplot();
+  ncplot.iq(ii,qq,iqopt);
+  ncplot.txt(sprintf('qnic %s', host));
+  ncplot.txt(sprintf('sqrt(<I^2+Q^2>) %.1f ADC', radius_mean));
+
+    ncplot.txt('rebalance parameters');
+    ncplot.txt(sprintf('  i_off    %d', res.i_off));
+    ncplot.txt(sprintf('  q_off    %d', res.q_off));
+    ncplot.txt(sprintf('  i_factor %g', res.i_factor));
+    ncplot.txt(sprintf('  q_factor %g', res.q_factor));
+    ncplot.txt(sprintf('  angle  %.1f deg', res.th_deg));
+    ncplot.txt(sprintf('  (radius %.1f)', radius_mean));
+
+    %    ncplot.txt(sprintf('hdr twopi %d', mvars.get('tx_hdr_twopi',0)));
+
+  %   xlim([-1.1 1.1]*mx);    ylim([-1.1 1.1]*mx);
+  ncplot.title({fname_s; 'Corrected IQ scatterplot (all samples)'});
+
+  if (uio.ask_yn('write calibration file',-1))
+    dev_name='qnic';
+    archive_var='qnic_archive'; % variable storing path to archive
+    while(1)
+      archive_path = tvars.ask_dir(['calibration archive for ' dev_name], archive_var);
+      [f_path f_name f_ext]=fileparts(archive_path);
+      if (~strfind(f_name,'archive'));
+        fprintf('WARN: %s\n', archive);
+        fprintf('      is a non-standard calibration archive name\n');
+      end
+      if (exist(archive_path, 'dir'))
+        break;
+      end
+      fprintf('WARN: %s\n', archive_path);
+      fprintf('      doesnt exist\n');
+    end
+    [n is ie] = fileutils.num_in_fname(fname_s);      
+    datedir = fileutils.rootname(fileutils.path(fname));
+    ofname = fullfile(archive_path,host,datedir,sprintf('cal_%s_rebal_%s_%03d.txt', host, datedir, n));
+    if (exist(ofname))
+      fprintf('WARN: calibration file already exists\n');
+      fprintf('      %s\n', ofname);
+      if (~uio.ask_yn('overwrite',0))
+        ofname='';
+      end
+    end
+    if (~isempty(ofname))
+      ovars = nc.vars_class(ofname);
+      ovars.clear_vars();
+      ovars.set('filetype', 'rebal');
+      ovars.copy(mvars, {'engineer', 'host', 'serialnum', 'hwver', 'fwver'});
+      ovars.set_context;
+      ovars.set('host', host);
+      ovars.set('srcfile', fname);
+      ovars.set('i_off', res.i_off);
+      ovars.set('q_off', res.q_off);
+      ovars.set('i_fact',res.i_factor);
+      ovars.set('q_fact',res.q_factor);
+      ovars.set('ang_deg',res.th_deg);
+      ovars.save();
+      fprintf('wrote %s\n', ovars.name);
+      ncplot.txt(sprintf('wrote %s', fileutils.fname_relative(ofname,'archive')));
+    end
+  end
+  uio.pause();
+  
+
+  return;
 
 
     
   if (0)
     % sinusoidal fit is poor because phase is drifting
     ncplot.init();
-    %    [a b c f err_rms]  = fit.sin(qq, asamp_Hz);
+    [a b c f err_rms]  = fit.sin(qq, asamp_Hz);
     t_s=(0:length(qq)-1)/asamp_Hz;
     ff=    a*cos(2*pi*f*t_s) + b*sin(2*pi*f*t_s) + c;
     plot(t_s,qq,'.','Color',coq(1,:));
@@ -385,88 +425,57 @@ function p(arg)
   end
 
   if (1) % BEFORE MAIN LOOP
-    lfsr.reset();      
-    hdr = lfsr.gen(hdr_len_bits);
-    hdr = repmat(hdr.',osamp,1);
-    hdr = hdr(:)*2-1;
-    ci = corr(hdr, ii);
-    cq = corr(hdr, qq);
-    c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
-    mx = max(c2);
-    search_off_asamps=0;
-    s_i=0;
 
-'DBG1'
-    is_alice
-    if (is_alice)
-      s_i=1;
-    else
+    if (1)
+      lfsr.reset();      
+      hdr = lfsr.gen(hdr_len_bits);
+      hdr = repmat(hdr.',osamp,1);
+      hdr = hdr(:)*2-1;
+      ci = corr(hdr, ii);
+      cq = corr(hdr, qq);
+      c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
       if (0)
-        p  = sqrt(ii.^2 + qq.^2);
-        cp = corr(ones(1,length(hdr)),p);
-        cp = cp*max(ii)/max(cp);
-        c2 = c2 ./ cp;
-        c2 = c2*max(ii)/max(c2);
+      p  = sqrt(ii.^2 + qq.^2);
+      cp = corr(ones(1,length(hdr)),p);
+      cp = cp*max(ii)/max(cp);
+      c2 = c2 ./ cp;
+      c2 = c2*max(ii)/max(c2);
       end
 
-      if (1)
-        % find first spike within 10% of highest spike
-        c2_mx=max(c2);
-        c2_med=median(c2);
-        c2_th=(c2_mx-c2_med)*.6+c2_med;
-        idx = find(c2>c2_th,1);
-        
-        h = round(frame_pd_asamps/4);
-        is = max(1,idx-h);
-        [mx mi]=max(c2(is:(is+frame_pd_asamps-1)));
-        new_ffi=mi+is-1;
-        new_ffi
-
-        % when using qsdc_start idx do this:
-        %   is = max(1,qsdc_start_idx-h);
-        %   [mx mi]=max(c2(is:is+frame_pd_asamps-1));
-        %   new_ffi=mi+is-1;
-        
-        first_frame_idx = new_ffi;
-        s_i = first_frame_idx; % I think.
-        opt_skip = floor(s_i/frame_pd_asamps); % not sure
-
-      else
-        % does not work over short fiber dist
-        
-        if (qsdc_start_idx) 
-          % make sure we dont split up pilot
-          search_off_asamps=mod(qsdc_start_idx-99,frame_pd_asamps)
-        end
-        dbg_find=1;      
-        c2_max=zeros(10,1);
-        s_i=0;
-        f_l=floor(length(ii)/frame_pd_asamps); % for each frame
-        for f_i=1:f_l
+  search_off_asamps=0;
+  qsdc_start_idx=find(aug4,1);
+  if (qsdc_start_idx) 
+    % make sure we dont split up pilot
+    search_off_asamps=mod(qsdc_start_idx-99,frame_pd_asamps)
+  end
+  dbg_find=1;      
+      c2_max=zeros(10,1);
+      s_i=0;
+      f_l=floor(length(ii)/frame_pd_asamps); % for each frame
+      for f_i=1:f_l
           % frame_off is zero based.
-          frame_off=(f_i-1)*frame_pd_asamps + search_off_asamps;
-          rng = (1:frame_pd_asamps)+frame_off;
-          if (rng(end)>length(ii))
-            break;
+        frame_off=(f_i-1)*frame_pd_asamps + search_off_asamps;
+        rng = (1:frame_pd_asamps)+frame_off;
+        if (rng(end)>length(ii))
+          break;
+        end
+        [mx mxi] = max(c2(rng));
+        %        fprintf('idx %d = %s   mx %d  mxi %d\n', frame_off+1, uio.dur(frame_off/asamp_Hz), round(mx), mxi);
+        c2_max(f_i)=mx;
+        if (f_i==4)
+          s=std(c2_max(1:4));
+          mx_m=mean(c2_max(1:4));
+          % fprintf('std %g\n', s);
+        elseif (f_i>4)
+          c2_slope = c2(rng(1)-1+mxi) - c2(rng(1)-2+mxi);
+          k =  (mx > (mx_m*2)); % +s*4)) && (c2_slope > 200);
+          if (dbg_find)
+            fprintf('%d   mx %.1f  slope %d  k %d\n', f_i, mx, c2_slope, k)
           end
-          [mx mxi] = max(c2(rng));
-          %        fprintf('idx %d = %s   mx %d  mxi %d\n', frame_off+1, uio.dur(frame_off/asamp_Hz), round(mx), mxi);
-          c2_max(f_i)=mx;
-          if (f_i==4)
-            s=std(c2_max(1:4));
-            mx_m=mean(c2_max(1:4));
-            % fprintf('std %g\n', s);
-          elseif (f_i>4)
-            c2_slope = c2(rng(1)-1+mxi) - c2(rng(1)-2+mxi);
-            k =  (mx > (mx_m*2)); % +s*4)) && (c2_slope > 200);
-            if (dbg_find)
-              fprintf('%d   mx %.1f  slope %d  k %d\n', f_i, mx, c2_slope, k)
-            end
-            if (k==1)
-              s_i = rng(1)-1+mxi;
-              opt_skip = frame_off/frame_pd_asamps;
-              break;
-            end
+          if (k==1)
+            s_i = rng(1)-1+mxi;
+            opt_skip = frame_off/frame_pd_asamps;
+            break;
           end
         end
       end
@@ -486,15 +495,8 @@ function p(arg)
       end
       plot(x,ii,'.','Color',coq(1,:));
       plot(x,qq,'.','Color',coq(2,:));
-      if (sim_hdl.do)
-        ppp=abs(ii)+abs(qq);
-      else
-        ppp=sqrt(ii.^2+qq.^2);
-      end
-      % plot(x,ppp,'.','Color',coq(3,:));      
       % plot(t_us,cp,'-','Color','yellow');
-      plot(x,c2,'-','Color',coq(3,:));
-      s_i
+      plot(x,c2,'-','Color','red');
       if (s_i)
         line(x(s_i)*[1 1],[0 max(ii)],'Color','red');
         ncplot.txt(sprintf('pilot at idx %d = %d = %s', s_i, mod(s_i-1,frame_pd_asamps)+1, uio.dur(t_us(s_i)/1e6,3)));
@@ -531,36 +533,30 @@ function p(arg)
       else
         plot_aug_events('frame_go_dlyd', x, aug4, 'green', mx*.5);        
         %        plot_aug_events('nonhdr_vld', x, aug6, 'black', mx*.5);        
-        if (qsdc_start_idx)
+        if (any(aug4))
+          idx=find(aug4,1);
           %          plot(t_us(idx)*[1 1], [0 mx], '-','Color', 'green');
           %         plot(x, aug4*mx, '-', 'Color', 'green');
-          ncplot.txt(sprintf('frame_go_dlyd at idx %d = %s', ...
-                             qsdc_start_idx, uio.dur(t_us(qsdc_start_idx))));
+          ncplot.txt(sprintf('frame_go_dlyd at idx %d = %s', idx, uio.dur(t_us(idx))));
           ID=180; % ideal diff
           if (s_i && ~is_alice)
-            if (qsdc_start_idx == s_i_b-ID)
+            if (idx == s_i_b-ID)
               ncplot.txt('   which is GOOD');
             else
-              ncplot.txt(sprintf('  BUT ideally at idx %d (add %d)', ...
-                                 s_i_b-ID, s_i_b-ID-qsdc_start_idx));
+              ncplot.txt(sprintf('  BUT ideally at idx %d (add %d)', s_i_b-ID, s_i_b-ID-idx));
               ncplot.txt('  (use "u round <dly>")');
             end
           end
         end
       end
-
-      ncplot.txt(sprintf('qnic %s', host));
       xlabel(sprintf('time (%ss)', xunits));
       y_mx = max(abs(ii));
       ncplot.title({'time series I & Q ... ALL samples'; fname_s});
-
+      ncplot.subplot();
 
       opt_offset_asamps = uio.ask('analysis offset (asamps)', max(0,s_i-16));
 
-
     end
-
-    
   else
     if (0)
       opt_skip=tvars.ask('skip how many frames', 'opt_skip');
@@ -570,7 +566,7 @@ function p(arg)
       opt_offset_asamps = round(opt_offset_ns*1e-9*asamp_Hz)
     end
   end
-
+  
   if (0)
 
     noise=zeros(num_itr,1);
@@ -683,12 +679,11 @@ function p(arg)
     m_q = max(abs(qq));
     fprintf('discarded %d LSBs from each sample. Now max I %d=x%x, Q %d=x%x\n', ...
             sim_hdl.num_lsb_discard, m_i, m_i, m_q, m_q);
-    pwr_all=abs(ii)+abs(qq);
   else
     pwr_all=sqrt(ii.^2+qq.^2);
   end
 
-  cheat=tvars.ask_yn('calibrate body offset','cal_body_offset',1);1;
+  cheat=0;
   if (cipher_en)
     cipher_en = tvars.ask_yn('analyze cipher','analyze_cipher',0);
     if (cipher_en)
@@ -824,7 +819,7 @@ opt_offset_asamps
       sweep_angs = [];
       for f_i=1:nn % for each frame
         % frame_off is zero based.
-        % fprintf('frame %d\n', f_i);
+        fprintf('frame %d\n', f_i);
         frame_off=(f_i-1)*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps + opt_offset_asamps;
         if (frame_off+frame_pd_asamps > length(ii))
           break;
@@ -847,6 +842,8 @@ opt_offset_asamps
 
 
           % CORRELATE FOR PILOT or PROBE
+          size(rng)
+          size(hdr)
           ci = corr(hdr, ii(rng));
           cq = corr(hdr, qq(rng));
           c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
@@ -1059,14 +1056,7 @@ opt_offset_asamps
         % frame_off is zero-based.
         is = frame_off + c2_mi-1 + hdr_len_asamps+1; % idx of start of body
         if (cipher_en && (is+cipher_len_asamps-1 <= l))
-          if (tx_same_cipher)
-            cipher_lfsr.reset();
-          end
-
           cipher = cipher_lfsr.gen(cipher_len_bits);
-          %  'DBG: cipher(1:16)'
-          %  fprintf('%d: %s\n', f_i, sprintf(' %d', cipher.'));
-          
           if (cipher_m==8)
             cipher = reshape(cipher.',4,[]);
             cipher = 8*cipher(1,:)+4*cipher(2,:)+1*cipher(3,:)+cipher(4,:);
@@ -1082,9 +1072,6 @@ opt_offset_asamps
           cipher = cipher(:);
           
           cipher_frame_qty = f_i;
-
-
-          
           ii_s = ii(is-1 + (1:cipher_len_asamps));
           qq_s = qq(is-1 + (1:cipher_len_asamps));
 
@@ -1100,13 +1087,12 @@ opt_offset_asamps
           eidxs = idxs.'+1;
           idxs=reshape([idxs; idxs+1],[],1);
 
-
           % ph_deg = 0;
 
 
           if (cheat)
             ph_deg = calc_derot2(ii_s(idxs),qq_s(idxs), hdr_ph_deg+tx_hdr_twopi*90);
-            ph_method='calibration mode';
+            ph_method='cheat';
           else
             % ph_deg = hdr_ph_deg + tx_hdr_twopi*30; ph_method='hdr+30';
             ph_deg =  hdr_ph_deg - body_ph_offset_deg + tx_hdr_twopi*45;
@@ -1213,8 +1199,8 @@ opt_offset_asamps
             ncplot.subplot();
             plot(1:cipher_len_asamps, ii_s, '-', 'Color',coq(1,:));
             plot(idxs, ii_s(idxs), '.', 'Color',ch(1,:));
-            %        plot(1:cipher_len_asamps, qq_s, '-', 'Color',coq(2,:));
-            %        plot(idxs, qq_s(idxs), '.', 'Color',ch(2,:));
+            plot(1:cipher_len_asamps, qq_s, '-', 'Color',coq(2,:));
+            plot(idxs, qq_s(idxs), '.', 'Color',ch(2,:));
             mx=max(max(abs(ii_s)),max(abs(qq_s)))*.9;
             if (1)
               plot(1:cipher_len_asamps, real(cipher_c)*mx*.5, '-', 'Color', 'yellow');
@@ -1440,12 +1426,9 @@ opt_offset_asamps
         s=sprintf('magenta: body phase   mean %d deg', round(mean(body_phs_unwrap_deg(1:cipher_frame_qty))));
         ncplot.txt(s);
         
-        cipher_frame_qty=min(length(body_phs_unwrap_deg), ...
-                             length(phs_unwrap_deg));
-        k=cipher_frame_qty;
-        body_phs_unwrap_deg = body_phs_unwrap_deg(1:k);
-        phs_unwrap_deg      = phs_unwrap_deg(1:k);
+
         diff_deg = mod(body_phs_unwrap_deg - phs_unwrap_deg+180,360)-180;
+
         if (0)
         plot(fr_t_us(1:cipher_frame_qty), ...
              diff_deg(1:cipher_frame_qty), '.-','Color','red');
@@ -1472,8 +1455,7 @@ opt_offset_asamps
       opt_show_aints=0;
 
       ncplot.init();
-      if (0) % elided during Photon Summit, because irrelevant
-      %      if (frame_pd_s < 1e-6)
+      if (frame_pd_s < 1e-6)
         max_aint_us = floor((frame_qty-opt_skip)*frame_pd_s*1e6);
         errs_rms=zeros(max_aint_us,1);
         aints_us=zeros(max_aint_us,1);
@@ -1518,6 +1500,7 @@ opt_offset_asamps
             break;
           end
         end
+      end
       
       ncplot.init();
       plot(aints_us(1:a_i_last), errs_rms(1:a_i_last),'.-');
@@ -1526,7 +1509,6 @@ opt_offset_asamps
       ylabel('err (deg RMS)');
       ncplot.title({fname_s;'phase error'});
       uio.pause();
-      end
 
       
       c_all = c_all+c*nn;
