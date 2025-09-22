@@ -3,7 +3,7 @@ function rx(arg)
   import nc.*
   mname='rx.m';
 
-  uio.print_wrap('\nrx.m\nThis program analyzes measurement files of IQ samples received on Bob when Alice transmits via QSDC, with or without chip modulation (what I previously termed "ciphering").\n');
+  uio.print_wrap('\nrx.m\nThis program analyzes measurement files of IQ samples received on Bob when Alice transmits via QSDC, with or without "chip modulation" (what Dan previously termed "ciphering").\n');
   [co,ch,coq]=ncplot.colors();
 
   opt_show=1;
@@ -160,6 +160,13 @@ function rx(arg)
   cipher_en = mvars.get('cipher_en',0);
   decipher_en = mvars.get('decipher_en',0);
   qsdc_bit_dur_s = qsdc_bit_dur_syms * qsdc_symbol_len_asamps / asamp_Hz;
+
+  annotation = mvars.get('annotation','');
+  if (~isempty(annotation))
+    fprintf('\nANNOTATION:\n');
+    uio.print_wrap(annotation);
+    fprintf('\n');
+  end
   
   fprintf('QSDC: data_pos_asamps   %d\n', qsdc_data_pos_asamps); 
   fprintf('      data_len_asamps   %d = %d alice syms = %d chips (per frame)\n', ...
@@ -1312,7 +1319,8 @@ function rx(arg)
           bit_cnt_this_frame=0;
           for k=1:nsyms
 
-            if (sym_i+k-1 > length(txed_syms))
+            if (sym_i > length(txed_syms))
+              fprintf('   ending after last txed sym (%d)\n', sym_i-1);
               break;
             end
             % Take mean of symbols over duration of bit,
@@ -1330,11 +1338,17 @@ function rx(arg)
                 fprintf('   bit %d:  expected %d  rxed %d  metric %.2f\n', ...
                         bit_i, txed_bits(bit_i), bit_rxed, bit_metric(bit_i));
               end
+
+              if (bit_i>4093)
+                fprintf('   bit %d:  expected %d  rxed %d  metric %.2f\n', ...
+                        bit_i, txed_bits(bit_i), bit_rxed, bit_metric(bit_i));
+              end
               
               bit_errs_this_frame = bit_errs_this_frame + (bit_rxed ~= txed_bits(bit_i));
               bit_cnt_this_frame = bit_cnt_this_frame + 1;
 
               if (bit_i==num_txed_bits)
+                fprintf('   ending on bit %d\n', bit_i);
                 break;
               end
               
@@ -1350,9 +1364,6 @@ function rx(arg)
           end
           bit_errs = bit_errs + bit_errs_this_frame;
           bit_cnt = bit_cnt + bit_cnt_this_frame;
-
-          
-
 
           
           % current start of frame
@@ -1434,7 +1445,6 @@ function rx(arg)
           ncplot.title({'IQ plot of QSDC data'; fname_s});
           end % if frame by frame
 
-            
 
           if (frame_by_frame && (frame_i >= nxt_f_i))          
             choice = uio.ask_choice('(n)ext, (s)skipto,  goto (e)nd, or (q)uit', 'nseq', choice);
