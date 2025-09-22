@@ -424,6 +424,8 @@ function p(arg)
       opt_skip = floor(s_i/frame_pd_asamps); % not sure
 
     end
+
+    round_trip_asamps = mvars.get('round_trip_asamps',0);
     
     % TIME DOMAIN PLOT, EVERYTHING (not main in loop yet)
     if (1)
@@ -487,24 +489,26 @@ function p(arg)
         if (qsdc_start_idx)
           %          plot(t_us(idx)*[1 1], [0 mx], '-','Color', 'green');
           %         plot(x, aug4*mx, '-', 'Color', 'green');
-          ncplot.txt(sprintf('frame_go_dlyd at idx %d = %s', ...
+          ncplot.txt(sprintf('frame_go_dlyd (green) at idx %d = %s', ...
                              qsdc_start_idx, uio.dur(t_us(qsdc_start_idx))));
           %       ID=180; % ideal diff
           ID=168; % ideal diff
+          rtdif=s_i_b-ID-qsdc_start_idx;
           if (s_i && ~is_alice)
+
             if (qsdc_start_idx == s_i_b-ID)
               ncplot.txt('   which is GOOD');
             else
               ncplot.txt(sprintf('  BUT ideally at idx %d (add %d)', ...
                                  s_i_b-ID, s_i_b-ID-qsdc_start_idx));
-              ncplot.txt('  (use "u round <dly>")');
+              ncplot.txt(sprintf('   (use "u dly round %d")', round_trip_asamps+rtdif));
             end
           end
         end
       end
 
       ncplot.txt(sprintf('qnic %s', host));
-      xlabel(sprintf('time (%ss)', xunits));
+      xlabel(sprintf('time (%s)', xunits));
       y_mx = max(abs(ii));
       ncplot.title({'time series I & Q ... ALL samples'; fname_s});
 
@@ -1823,7 +1827,7 @@ end
 function plot_aug_events(desc, x, msk, color, mx)
   import nc.*
   idxs=find(msk);
-  ncplot.txt(sprintf('%s %d', desc, length(idxs)));
+  %  ncplot.txt(sprintf('%s %d', desc, length(idxs)));
   for k=1:length(idxs)
     line(x(idxs(k))*[1 1],[0 mx],'Color',color);
   end

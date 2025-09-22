@@ -160,7 +160,8 @@ function rx(arg)
   cipher_en = mvars.get('cipher_en',0);
   decipher_en = mvars.get('decipher_en',0);
   qsdc_bit_dur_s = qsdc_bit_dur_syms * qsdc_symbol_len_asamps / asamp_Hz;
-
+  qsdc_bit_dur_asamps = qsdc_bit_dur_syms * qsdc_symbol_len_asamps;
+  
   annotation = mvars.get('annotation','');
   if (~isempty(annotation))
     fprintf('\nANNOTATION:\n');
@@ -173,7 +174,9 @@ function rx(arg)
           qsdc_data_len_asamps, qsdc_data_len_asamps/qsdc_symbol_len_asamps, qsdc_data_len_asamps/osamp);
   fprintf('      code_len          %d (code bits, not data bits)\n', qsdc_code_len_cbits);
   fprintf('      symbol_len_asamps %d\n', qsdc_symbol_len_asamps);
-  fprintf('      bit duration      %d syms = %s\n', qsdc_bit_dur_syms,uio.dur(qsdc_bit_dur_s));
+  fprintf('      bit duration      %d syms = %d chips = %s\n', ...
+          qsdc_bit_dur_syms, qsdc_bit_dur_asamps/osamp, ...
+          uio.dur(qsdc_bit_dur_s));
   fprintf('      is_qpsdk          %d\n', qsdc_data_is_qpsk);
   fprintf('      chipmod_en        %d\n', cipher_en);
   fprintf('      de_chipmod_en     %d\n', decipher_en);
@@ -229,7 +232,7 @@ function rx(arg)
     dflt = tvars.get('msg_fname','zeroes.bin');
   end
   if (opt_noplot)
-    msg_fname=dflt;
+    msg_fname= tvars.get('msg_fname','zeroes.bin');
     [fid errmsg] = fopen(msg_fname, 'r', 'l', 'US-ASCII');
     if ((fid<0) || ~isempty(errmsg))
       fprintf('ERR: cant open file\n   %s\n', errmsg);
@@ -673,7 +676,6 @@ function rx(arg)
   body_ph_offset_deg   = 0;
   if (opt_noplot)
     body_ph_offset_deg   = tvars.get('body_ph_offset_deg',0);
-    body_ph_offset_deg   = 90;
     fprintf('using body ph offset %d\n', body_ph_offset_deg);
   else
     if (~phase_est_en)
@@ -1283,6 +1285,12 @@ function rx(arg)
               sym_ii=mean(d_ii((k-1)*sl+(1:sl)));
               sym_qq=mean(d_qq((k-1)*sl+(1:sl)));
             end
+
+            % 9/22/25 9:37 added minus sign here.
+if (1)
+            sym_ii = -sym_ii;
+            sym_qq = -sym_qq;
+end            
             rxed_ii(k) = sym_ii;
             rxed_qq(k) = sym_qq;
             
@@ -1326,6 +1334,8 @@ function rx(arg)
             % Take mean of symbols over duration of bit,
             % multiplied by sign of bcode.
             % This is essentially a correlation with bcode.
+
+
             bit_ii = bit_ii + rxed_ii(k) * (bcode(bit_n)*2-1);
             bit_qq = bit_qq + rxed_qq(k) * (bcode(bit_n)*2-1);
             bit_n  = bit_n + 1;
@@ -1507,16 +1517,16 @@ function rx(arg)
       if (~opt_calibrate_offset)
         fprintf('  body phase offset %d deg\n', body_ph_offset_deg);
       end
-      fprintf('  msg file %s\n', msg_fname);
-      fprintf('  chipmoded  %d  (AKA "ciphered")\n', cipher_en);
-      fprintf('  roundtrip %d samps = %s\n', ...
+      fprintf('  msg file   %s\n', msg_fname);
+      fprintf('  chipmoded  %d\n', cipher_en);
+      fprintf('  roundtrip  %d samps = %s\n', ...
               round_trip_asamps, uio.dur(round_trip_asamps/asamp_Hz,6));
 
       pilot_rms = round(sqrt(mean(pilot_rms_per_frame.^2)));
       body_rms  = round(sqrt(mean(body_rms_per_frame.^2)));
-      fprintf('  total_rms %d\n', total_rms);
-      fprintf('  pilot_rms %d\n', pilot_rms);
-      fprintf('  body_rms  %d\n', body_rms);
+      fprintf('  total_rms  %d\n', total_rms);
+      fprintf('  pilot_rms  %d\n', pilot_rms);
+      fprintf('  body_rms   %d\n', body_rms);
 
 
 
@@ -1592,6 +1602,16 @@ function rx(arg)
           uio.pause();
         end
       end
+
+      idxs=find(txed_bits);
+mn=   mean(bit_metric(idxs));
+st=   std(bit_metric(idxs));
+      fprintf('txed zeros mean  %g  std %g\n', mn, st);
+      idxs=find(~txed_bits);
+mn =  mean(bit_metric(idxs));
+st=  std(bit_metric(idxs));
+    fprintf('txed ones mean  %g  std %g\n', mn, st);
+              
       
       return;
       
