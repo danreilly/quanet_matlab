@@ -25,8 +25,8 @@ function [ii qq] = decipher(ii, qq, mvars, tvars)
   f_l=floor((length(ii)+1-ffi)/frame_pd_asamps); % for each frame
 
 
-  fprintf('cipher len %d asamps per frame\n', cipher_len_asamps);
-  fprintf('           %d bits per frame\n', cipher_len_bits);
+  fprintf('chipmod len %d asamps per frame\n', cipher_len_asamps);
+  fprintf('            %d bits per frame\n', cipher_len_bits);
   
   for f_i=1:f_l % for each frame
     frame_off=(f_i-1)*frame_pd_asamps + ffi-1; % 0 based

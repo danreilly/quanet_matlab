@@ -321,9 +321,6 @@ function p(arg)
 
 
 
-
-%'DJSHD'
-%already_balanced=0
   
   do_eye=1;
   if (~already_balanced)
@@ -396,8 +393,6 @@ function p(arg)
     search_off_asamps=0;
     s_i=0;
 
-'DBG1'
-    is_alice
     if (is_alice)
       s_i=1;
     else
@@ -409,67 +404,25 @@ function p(arg)
         c2 = c2*max(ii)/max(c2);
       end
 
-      if (1)
-        % find first spike within 10% of highest spike
-        c2_mx=max(c2);
-        c2_med=median(c2);
-        c2_th=(c2_mx-c2_med)*.6+c2_med;
-        idx = find(c2>c2_th,1);
-        
-        h = round(frame_pd_asamps/4);
-        is = max(1,idx-h);
-        [mx mi]=max(c2(is:(is+frame_pd_asamps-1)));
-        new_ffi=mi+is-1;
-        new_ffi
+      % find first spike within some % of highest spike
+      c2_mx=max(c2);
+      c2_med=median(c2);
+      c2_th=(c2_mx-c2_med)*.5+c2_med;
+      idx = find(c2>c2_th,1);
+      
+      h = round(frame_pd_asamps/4);
+      is = max(1,idx-h);
+      [mx mi]=max(c2(is:(is+frame_pd_asamps-1)));
+      first_frame_idx = mi+is-1;
 
-        % when using qsdc_start idx do this:
-        %   is = max(1,qsdc_start_idx-h);
-        %   [mx mi]=max(c2(is:is+frame_pd_asamps-1));
-        %   new_ffi=mi+is-1;
-        
-        first_frame_idx = new_ffi;
-        s_i = first_frame_idx; % I think.
-        opt_skip = floor(s_i/frame_pd_asamps); % not sure
+      % when using qsdc_start idx do this:
+      %   is = max(1,qsdc_start_idx-h);
+      %   [mx mi]=max(c2(is:is+frame_pd_asamps-1));
+      %   first_frame_idx=mi+is-1;
+      
+      s_i = first_frame_idx; % I think.
+      opt_skip = floor(s_i/frame_pd_asamps); % not sure
 
-      else
-        % does not work over short fiber dist
-        
-        if (qsdc_start_idx) 
-          % make sure we dont split up pilot
-          search_off_asamps=mod(qsdc_start_idx-99,frame_pd_asamps)
-        end
-        dbg_find=1;      
-        c2_max=zeros(10,1);
-        s_i=0;
-        f_l=floor(length(ii)/frame_pd_asamps); % for each frame
-        for f_i=1:f_l
-          % frame_off is zero based.
-          frame_off=(f_i-1)*frame_pd_asamps + search_off_asamps;
-          rng = (1:frame_pd_asamps)+frame_off;
-          if (rng(end)>length(ii))
-            break;
-          end
-          [mx mxi] = max(c2(rng));
-          %        fprintf('idx %d = %s   mx %d  mxi %d\n', frame_off+1, uio.dur(frame_off/asamp_Hz), round(mx), mxi);
-          c2_max(f_i)=mx;
-          if (f_i==4)
-            s=std(c2_max(1:4));
-            mx_m=mean(c2_max(1:4));
-            % fprintf('std %g\n', s);
-          elseif (f_i>4)
-            c2_slope = c2(rng(1)-1+mxi) - c2(rng(1)-2+mxi);
-            k =  (mx > (mx_m*2)); % +s*4)) && (c2_slope > 200);
-            if (dbg_find)
-              fprintf('%d   mx %.1f  slope %d  k %d\n', f_i, mx, c2_slope, k)
-            end
-            if (k==1)
-              s_i = rng(1)-1+mxi;
-              opt_skip = frame_off/frame_pd_asamps;
-              break;
-            end
-          end
-        end
-      end
     end
     
     % TIME DOMAIN PLOT, EVERYTHING (not main in loop yet)
@@ -536,7 +489,8 @@ function p(arg)
           %         plot(x, aug4*mx, '-', 'Color', 'green');
           ncplot.txt(sprintf('frame_go_dlyd at idx %d = %s', ...
                              qsdc_start_idx, uio.dur(t_us(qsdc_start_idx))));
-          ID=180; % ideal diff
+          %       ID=180; % ideal diff
+          ID=168; % ideal diff
           if (s_i && ~is_alice)
             if (qsdc_start_idx == s_i_b-ID)
               ncplot.txt('   which is GOOD');

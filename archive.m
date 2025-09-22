@@ -187,11 +187,22 @@ function archive(arg)
     s(1)='d';
     s=fileutils.replext(s,'.raw');
     fname2=[fileutils.path(fname) '\' s];
-    
     fname2_dst = fullfile('archive', datedir, fileutils.nopath(fname2));
+
     r_copy(fname, fname_dst);
     r_copy(fname2, fname2_dst);
     fprintf('\nwrote:\n  %s\n  %s\n', fname_dst, fname2_dst);
+
+    [f_path f_base f_ext]=fileparts(fname);
+    fname_out=fullfile(f_path,[f_base '_out' f_ext]);
+    fname_out_dst = fullfile('archive', datedir, fileutils.nopath(fname_out));
+    if (exist(fname_out))
+      r_copy(fname_out, fname_out_dst);
+      fprintf('  %s\n', fname_out_dst);
+    end
+    
+    fprintf('\n');
+    
   end
    
 end
