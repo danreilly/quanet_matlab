@@ -452,9 +452,9 @@ function p(arg)
       s_i
       if (s_i)
         line(x(s_i)*[1 1],[0 max(ii)],'Color','red');
-        ncplot.txt(sprintf('pilot at idx %d = %d = %s', s_i, mod(s_i-1,frame_pd_asamps)+1, uio.dur(t_us(s_i)/1e6,3)));
+        ncplot.txt(sprintf('pilot at idx %d = %s', s_i, uio.dur(t_us(s_i)/1e6,3)));
         if (~is_alice)
-          s_i_b=ceil((s_i-1)/4)*4+1;
+          s_i_b=round((s_i-1)/4)*4+1;
           if (s_i_b ~= s_i)
             ncplot.txt(sprintf('   BUT ideally at idx %d (add %d)', s_i_b, s_i_b-s_i));
           end

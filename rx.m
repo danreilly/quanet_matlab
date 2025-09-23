@@ -4,7 +4,7 @@ function rx(arg)
   mname='rx.m';
 
   uio.print_wrap('\nrx.m\nThis program analyzes measurement files of IQ samples received on Bob when Alice transmits via QSDC, with or without "chip modulation" (what Dan previously termed "ciphering").\n');
-  [co,ch,coq]=ncplot.colors();
+
 
   opt_show=1;
   h_JpHz = 6.62607e-34;
@@ -62,7 +62,7 @@ function rx(arg)
   
 
   tic();
-  [mvars m aug] = load_measfile(fname);
+  [mvars m aug raw_date] = load_measfile(fname);
   toc()
   if (isempty(m))
     fprintf('ERR: there is no data in this file\n');
@@ -99,6 +99,14 @@ function rx(arg)
   tx_0 = mvars.get('tx_0',0);
   if (tx_0)
     do_eye=1;
+  end
+
+
+  date=mvars.get('date', '');
+  if (isempty(date))
+    fprintf('WARN: setting data date from raw file date: %s\n', raw_date);
+    mvars.set('date',raw_date);
+    mvars.save();
   end
   
   frame_pd_asamps = mvars.get('frame_pd_asamps', 0);
@@ -195,6 +203,7 @@ function rx(arg)
   
   % IQ SCATTERPLOT
   if (~opt_noplot)
+    [co,ch,coq]=ncplot.colors();    
     ncplot.init();
     [co,ch,coq]=ncplot.colors();
     ncplot.subplot(1,2);
@@ -258,9 +267,9 @@ function rx(arg)
       end
       break;
     end
+    tvars.set('msg_fname',msg_fname);
+    tvars.save();
   end
-  tvars.set('msg_fname',msg_fname);
-  tvars.save();
 
   if (opt_noplot)
     opt_ignore_transitions=tvars.get('ignore_transistions',1);
@@ -440,12 +449,14 @@ function rx(arg)
 
 
 
-
-
-
-
-
-
+if(0)
+  opt_flip=mvars.get('flip',[]);
+  if (isempty(opt_flip))
+    opt_flip=tvars.ask_yn('flip sign','flip',0);
+    mvars.set('flip',opt_flip);
+    mvars.save();
+  end
+end  
 
   
   filt_desc='none';
@@ -459,7 +470,7 @@ function rx(arg)
 
 
 
-  ncplot.subplot(1,2);
+
   if (~already_balanced)
     % IQ SCATTERPLOT
 
@@ -481,7 +492,10 @@ function rx(arg)
     ii = im2(1,:).';
     qq = im2(2,:).';
     radius_mean=sqrt(mean(ii.^2+qq.^2));
-    
+
+
+    if (~opt_noplot)
+    ncplot.subplot(1,2);    
     ncplot.subplot();
     ncplot.iq(ii,qq,iqopt);
     ncplot.txt(sprintf('qnic %s', host));
@@ -500,6 +514,7 @@ function rx(arg)
     %   xlim([-1.1 1.1]*mx);    ylim([-1.1 1.1]*mx);
     ncplot.title({fname_s; 'Corrected IQ scatterplot'});
     uio.pause('see rebalanced IQ plot');
+    end
   end
 
 
@@ -565,6 +580,7 @@ function rx(arg)
   search_off_asamps=0;
   qsdc_start_idx=find(aug4,1);
 
+
   first_frame_idx=1;
 
   lfsr.reset();
@@ -579,7 +595,11 @@ function rx(arg)
   
   h = round(frame_pd_asamps/4);
 
-  if (1)
+  if (isempty(qsdc_start_idx))
+    fprintf('WARN: no qsdc_start_idx in file (aug4)!\n');
+    uio.pause();
+  end  
+  if (~isempty(qsdc_start_idx))
     % This works only if qsdc_start_idx is correct:
     is = max(1,qsdc_start_idx-h);
   else
@@ -590,6 +610,7 @@ function rx(arg)
     idx = find(c2>c2_th,1);
     is = max(1,idx-h);
   end
+
   [mx mi]=max(c2(is:(is+frame_pd_asamps-1)));
   first_frame_idx=mi+is-1;
   fprintf('first_frame_idx %d\n', first_frame_idx);
@@ -611,7 +632,8 @@ function rx(arg)
                        uio.dur(t_us(first_frame_idx)*1e-6,3)));
     ncplot.txt(sprintf('frame at idx %d = %s', first_frame_idx, uio.dur(t_us(first_frame_idx)*1e-6,3)));
     ncplot.txt(sprintf('difference %d (should be 168)\n', ...
-                   first_frame_idx - qsdc_start_idx));
+                       first_frame_idx - qsdc_start_idx));
+    xlabel('time (us)');
     uio.pause();
    end
   
@@ -889,13 +911,17 @@ function rx(arg)
       ei = nn*frame_pd_asamps + (itr-1)*frame_qty*frame_pd_asamps;
 
       if (frame_by_frame)
-        ncplot.subplot(2,1);
-        plot_eye(si,ei,itr,[]);
+        if (~opt_noplot)        
+          ncplot.subplot(2,1);
+          plot_eye(si,ei,itr,[]);
+        end
+        
         if (use_filt)
           filt_desc = sprintf('gauss fcut %.1fMHz  len %d', fcut_Hz/1e6, filt_len);
           ii(si:ei) = filt.gauss(ii(si:ei), asamp_Hz, fcut_Hz, filt_len);
           qq(si:ei) = filt.gauss(qq(si:ei), asamp_Hz, fcut_Hz, filt_len);
         end
+        
       end
       
       if (sim_hdl.do)
@@ -1055,7 +1081,7 @@ function rx(arg)
 
 
           
-          if (frame_by_frame && (frame_i >= nxt_f_i))
+        if (frame_by_frame && (frame_i >= nxt_f_i))
 
             % TIME DOMAIN PLOT OF CURRENT FRAME
             ncplot.subplot(1,2);
@@ -1069,11 +1095,20 @@ function rx(arg)
             end
             plot(t_us, ii(rng), '.-', 'Color',coq(1,:));
             plot(t_us, qq(rng), '.-', 'Color',coq(2,:));
-            %plot(t_us, c2, '-', 'Color','red');
-            [c2_mx c2_mi]=max(abs(c2));
+            
+            if (0)
+              ci = corr(hdr, ii(rng));
+              cq = corr(hdr, qq(rng));
+              c2 = sqrt(ci.^2 + cq.^2)/hdr_len_bits;
+               plot(t_us, c2, '-', 'Color','red');
+              [c2_mx c2_mi]=max(abs(c2));
+            else
+              c2_mi=1;
+              c2_mx=hdr_corr;
+            end
             line([1 1]*t_us(c2_mi),[0 c2_mx],'Color','red');
 
-            mx = max(mx, max(abs(c2))); % just for plot ylim
+            mx = max(mx, c2_mx); % just for plot ylim
             if (c2_mi+hdr_len_asamps <= frame_pd_asamps)
               line([1 1]*t_us(c2_mi+hdr_len_asamps),[0 c2_mx],'Color','magenta');
               % dont plot hdr if not all of it is there.
@@ -1163,15 +1198,8 @@ function rx(arg)
             % DRAW IQ PLOT OF HEADER
             ncplot.subplot();
             ncplot.iq(ii(h_rng),qq(h_rng));
-
             
             h_srng = frame_offset+c2_mi-1 + floor(osamp/2) + (0:hdr_len_bits-1)*osamp;
-            %'CORRECT'
-            %'          h_srng(1)          '
-            %          h_srng(1)
-            %'          b_rng(1)'
-            %          b_rng(1)
-            
             plot(ii(h_srng),qq(h_srng),'.', 'Color','blue');
             plot(ii(b_rng),qq(b_rng),'.', 'Color','green');
             
@@ -1250,11 +1278,15 @@ function rx(arg)
             desc='raw';
           end
 
-          iiqq = geom.rotate(-derot_deg*pi/180, [ii(b_rng).';qq(b_rng).']);
-          d_ii=iiqq(1,:).';
-          d_qq=iiqq(2,:).';
-
-
+          if (~phase_est_en)
+            iiqq = geom.rotate(-derot_deg*pi/180, [ii(b_rng).';qq(b_rng).']);
+            d_ii=iiqq(1,:).';
+            d_qq=iiqq(2,:).';
+          else
+            d_ii=ii(b_rng);
+            d_qq=qq(b_rng);
+          end
+          
           nsyms = qsdc_data_len_asamps/qsdc_symbol_len_asamps;
           trans_rng=(0:nsyms-1)*qsdc_symbol_len_asamps;
           e_rng = setdiff(1:qsdc_data_len_asamps, trans_rng+1);
@@ -1286,11 +1318,14 @@ function rx(arg)
               sym_qq=mean(d_qq((k-1)*sl+(1:sl)));
             end
 
-            % 9/22/25 9:37 added minus sign here.
-if (1)
-            sym_ii = -sym_ii;
-            sym_qq = -sym_qq;
-end            
+            if (0)
+              'idx of first samp'
+              b_rng(1:4)
+              (k-1)*sl+2
+              'first i'
+              sym_ii
+            end
+            
             rxed_ii(k) = sym_ii;
             rxed_qq(k) = sym_qq;
             
@@ -1304,7 +1339,7 @@ end
           
           symbol_ber = err_sum/nsyms_actual;
           if (opt_calibrate_offset && (symbol_ber>.5))
-            % fprintf('FLIP %d\n', frame_i);
+            fprintf('FLIP %d\n', frame_i);
             err_sum = nsyms_actual-err_sum;
             symbol_ber = 1-symbol_ber;
             derot_deg = derot_deg +180;
@@ -1527,8 +1562,7 @@ end
       fprintf('  total_rms  %d\n', total_rms);
       fprintf('  pilot_rms  %d\n', pilot_rms);
       fprintf('  body_rms   %d\n', body_rms);
-
-
+      fprintf('  body_phase_offset_deg  %.1f\n', body_ph_offset_deg);
 
       fr_t_us = (0:hdr_phs_deg_l-1)*frame_pd_s*1e6;
       ei=hdr_phs_deg_l;
@@ -1575,8 +1609,6 @@ end
         xlabel(sprintf('time (%s)',x_units));
         ylabel('phase (deg)');
         ncplot.title({'Phase drift'; fname_s});
-        uio.pause();
-
       
         ncplot.init();
         ncplot.subplot(3,1);
@@ -1585,6 +1617,9 @@ end
         plot(x, symbol_bers(1:ei), '.-', 'Color', coq(1,:));
         xlabel(sprintf('time (%s)',x_units));
         ylabel('symbol errors (rate)');
+        if (phase_est_en)
+          ncplot.txt('HDL phase est and derot');
+        end
         ncplot.title({'Error rate per frame'; fname_s});
 
         ncplot.subplot();
@@ -1604,13 +1639,13 @@ end
       end
 
       idxs=find(txed_bits);
-mn=   mean(bit_metric(idxs));
-st=   std(bit_metric(idxs));
+      mn=   mean(bit_metric(idxs));
+      st=   std(bit_metric(idxs));
       fprintf('txed zeros mean  %g  std %g\n', mn, st);
       idxs=find(~txed_bits);
-mn =  mean(bit_metric(idxs));
-st=  std(bit_metric(idxs));
-    fprintf('txed ones mean  %g  std %g\n', mn, st);
+      mn =  mean(bit_metric(idxs));
+      st=  std(bit_metric(idxs));
+      fprintf('txed ones mean  %g  std %g\n', mn, st);
               
       
       return;
@@ -1622,6 +1657,7 @@ st=  std(bit_metric(idxs));
   function plot_eye(si, ei, itr, filt_desc)
     import nc.*
     ncplot.subplot();
+
     plot(ii(si:ei),qq(si:ei),'.','Color',coq(1,:));
     ncplot.title({fname_s; sprintf('IQ scatterplot  itr %d', itr)});
     xlim([-1 1]*2^13);

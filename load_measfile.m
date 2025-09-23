@@ -1,5 +1,7 @@
-function [mvars m aug] = load_measfile(fname)
+function [mvars m aug raw_date] = load_measfile(fname)
   import nc.*
+  
+  raw_date='';
   
   if (strcmp(fileutils.ext(fname),'.raw'))
     s = fileutils.nopath(fname);
@@ -15,8 +17,12 @@ function [mvars m aug] = load_measfile(fname)
     s = fileutils.nopath(fname);
     s(1)='d';
     s=fileutils.replext(s,'.raw');
-    fname2=[fileutils.path(fname) '\' s];
+    fname2=fullfile(fileutils.path(fname) , s);
     fprintf('    and %s\n', fname2);
+
+    fid_info = dir(fname2);
+    raw_date=fid_info.date;
+    
     fid=fopen(fname2,'r','l','US-ASCII');
     if (fid<0)
       fprintf('ERR: cant open %s\n', fname2);
