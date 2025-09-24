@@ -13,7 +13,9 @@ function rx(arg)
 
   opt_fnum=-1;
   opt_noplot=0;
-  if (nargin)
+  if (nargin=='x')
+    'x'
+  elseif (nargin)
     [v n]=sscanf(arg,'%d');
     if (n==1)
       opt_fnum = abs(v);
@@ -236,7 +238,7 @@ function rx(arg)
 
   
   % DETERMINE THE MESSAGE THAT WAS SENT
-  dflt = mvars.get('msg_fname','zeroes.bin');
+  dflt = mvars.get('msg_fname', '');
   if (isempty(dflt))
     dflt = tvars.get('msg_fname','zeroes.bin');
   end
@@ -695,18 +697,26 @@ end
   body_adj_asamps = 0;
 
   opt_calibrate_offset = 0;
-  body_ph_offset_deg   = 0;
+
+  dflt = mvars.get('body_ph_offset_deg',[]);
+  if (isempty(dflt))
+    dflt = tvars.get('body_ph_offset_deg',90)
+  end
+
   if (opt_noplot)
-    body_ph_offset_deg   = tvars.get('body_ph_offset_deg',0);
+    body_ph_offset_deg = dflt;
     fprintf('using body ph offset %d\n', body_ph_offset_deg);
+    mvars.set('body_ph_offset_deg', body_ph_offset_deg);
   else
     if (~phase_est_en)
       opt_calibrate_offset = tvars.ask_yn('do calibration of body phase offset', ...
                                           'opt_calibrate_offset',0);
       if (~opt_calibrate_offset)
         fprintf('\nThe body phase offset will be added to the header phase to get the body phase.\n');
-        body_ph_offset_deg = mvars.ask('body phase offset (deg)','body_ph_offset_deg',0);
+        
+        body_ph_offset_deg = uio.ask('body phase offset (deg)',dflt);
         tvars.set('body_ph_offset_deg',body_ph_offset_deg);
+        mvars.set('body_ph_offset_deg',body_ph_offset_deg);
         if (~in_archive)
           mvars.save();
         end

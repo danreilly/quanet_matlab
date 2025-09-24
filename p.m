@@ -199,7 +199,7 @@ function p(arg)
 
 
 
-  
+  if (0)
   mean_pwr_dBm = mvars.get('mean_pwr_dBm', []);
   if (~isempty(mean_pwr_dBm))
     mean_pwr_dBm = mvars.ask('mean signal pwr (dB,)', 'mean_pwr_dBm', -inf);
@@ -211,7 +211,7 @@ function p(arg)
     mean_pwr_dBm = mon_pwr_dBm + sig_minus_mon_dB;
   end
   mvars.save();
-
+  end
 
 
   
@@ -239,6 +239,9 @@ function p(arg)
 
 
   
+  sim_hdl.do = 0;
+  drawnow();
+  if (0)
   sim_hdl.do = tvars.ask_yn('simulate HDL processing', 'sim_hdl');
   if (sim_hdl.do)
     sim_hdl.num_lsb_discard = tvars.ask('number of LSBs to discard', 'num_lsb_discard');
@@ -246,7 +249,7 @@ function p(arg)
     sim_hdl.num_slices = 4;
   end
   tvars.save();
-
+  end
 
 
 
@@ -498,6 +501,8 @@ function p(arg)
 
             if (qsdc_start_idx == s_i_b-ID)
               ncplot.txt('   which is GOOD');
+              ncplot.txt(sprintf('   round trip %d = %.3us', ...
+                         round_trip_asamps, round_trip_asamps/asamp_Hz*1e6));
             else
               ncplot.txt(sprintf('  BUT ideally at idx %d (add %d)', ...
                                  s_i_b-ID, s_i_b-ID-qsdc_start_idx));
@@ -1829,6 +1834,6 @@ function plot_aug_events(desc, x, msk, color, mx)
   idxs=find(msk);
   %  ncplot.txt(sprintf('%s %d', desc, length(idxs)));
   for k=1:length(idxs)
-    line(x(idxs(k))*[1 1],[0 mx],'Color',color);
+    line(x(idxs(k))*[1 1],[mx*.75 mx],'Color',color);
   end
 end
