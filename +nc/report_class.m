@@ -16,12 +16,13 @@ classdef report_class < handle
     img_ctr
     table_width
     table_col
+    review
   end
 
   methods
 
     % CONSTRUCTOR
-    function me = report_class(fname, title)
+    function me = report_class(fname, title, opt)
       import nc.*
 %      me.latex = 'C:\Users\reilly\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe';
       me.latex = 'pdflatex';
@@ -30,10 +31,15 @@ classdef report_class < handle
         fprintf('Install MikTeX from: https://miktex.org\n');
         error('pdflatex not in path.  Did you install MikTex (from https://miktex.org)');
       end
+      if (nargin<3)
+        opt.hdr=0;
+      end
       me.fname = fname; % final name of report
       % temporary files for the report go into the report directory
-      report_fname = fileutils.uniquename('C:\Temp\report0');
+      %      report_fname = fileutils.uniquename('C:\Temp\report0');
+      report_fname = 'report0';
       me.tmp_dir = ['C:\Temp\' report_fname];
+
       fileutils.ensure_dir(me.tmp_dir);
 
       me.tmp_fname = [me.tmp_dir '\report.tex'];
@@ -51,6 +57,25 @@ classdef report_class < handle
         me.write_nl('\usepackage[margin=0.75in]{geometry}');
         me.write_nl('\usepackage{graphicx}');
         me.write_nl('\usepackage{tcolorbox}');
+
+        if (opt.hdr)
+          img_fname=opt.hdr_fname; % 'G:\shared drives\tech\standards\nucrypt_header.jpg';
+          dst = fullfile(me.tmp_dir, 'nucrypt_header.jpg');
+          [stat, msg, msgid] = copyfile(img_fname, dst);
+          if (~stat)
+            fprintf('ERR: report_class.header: failed to copy %s\n', img_fname);
+            fprintf('     to %s\n', dst);
+            fprintf('     Matlab supplies the following error message:\n');
+            fprintf('        %s\n', msg);
+            nc.uio.pause();
+          end
+          me.write_nl('\usepackage{fancyhdr}');
+          me.write_nl('\setlength{\headheight}{45pt}');
+          me.write_nl('\pagestyle{fancy}');
+          me.write_nl('\renewcommand{\headrulewidth}{0pt}');
+          me.write_nl('\fancyhead[C]{\includegraphics{nucrypt_header.jpg}}');
+        end
+        
         me.title(title);
         me.write_nl('\begin{document}');
       end
@@ -120,6 +145,7 @@ classdef report_class < handle
     end
 
     function writeln(me, str)
+    % writes (optional) str then a newline visible to in final .pdf doc
       if (nargin<2)
         str='';
       end
@@ -128,6 +154,9 @@ classdef report_class < handle
     end
     
     function write_nl(me, str)
+    % writes (optional) str to latex document, followed by a newline.
+    % But this newline is to make the latex source code look pretty.
+    % It won't be visible in the final .pdf doc.
       if (nargin<2)
         str='';
       end
@@ -200,18 +229,41 @@ classdef report_class < handle
       me.write_nl('\end{table}');
       me.write_nl();
     end
+
+    function insert_graphic(me, img_fname, wid_cm, caption)
+      if (nargin<4)
+        caption='';
+      end
+      nameonly = nc.fileutils.nopath(img_fname);
+      dst = fullfile(me.tmp_dir, nameonly);
+      [stat, msg, msgid] = copyfile(img_fname, dst);
+      if (~stat)
+        fprintf('ERR: report_class.insert_graphic: failed to copy %s\n', img_fname);
+        fprintf('     to %s\n', dst);
+        fprintf('     Matlab supplies the following error message:\n');
+        fprintf('        %s\n', msg);
+        nc.uio.pause();
+      else
+        % me.write_nl('\begin{figure}');
+        %if(~isempty(caption))
+        %  me.write_nl(sprintf('  \\caption {%s}', caption));
+        %end
+        me.write(sprintf('  \\includegraphics[width=%fcm,keepaspectratio]{%s}\n', wid_cm, nameonly));
+        %me.write_nl('\end{figure}')
+      end
+    end
     
     function insert_plot(me, fig, size_in, wid_in)
-    % desc: inserts current plot into report
+    % desc: inserts designated figure (a plot) into report
     % usage:
     %   report.insert_plot(fig) - inserts plot
     %   report.insert_plot(fig, size_in) -- sets fig size, then inserts plot.
     %   report.insert_plot(fig, size_in, wid_in) -- sets fig size,
     %                             then scales it to specified width and inserts it
-    %
-    % size_in: [wid height] - size to set figure before insertion
+    % inputs:
+    %   size_in: [wid height] - size to set figure before insertion
     %                         If emtpty, figure is not changed.
-    % wid_in: width to use in pdf doc ( can be different).
+    %   wid_in: width to use in pdf doc ( can be different).
       import nc.*
       
       if (me.tmp_fid>0)
@@ -229,14 +281,28 @@ classdef report_class < handle
           p(3:4)=size_in;
           set(fig,'Position',p);
         end
+
+        note='';
+        if (me.review)
+          fprintf('Review plot > ');
+          note = input('','s');
+        end
         
         if (isempty(wid_in))
           wid_in = size_in(1);
         end
         wid_cm = wid_in * 2.54;
         me.img_ctr = me.img_ctr+1;
+        if (~isempty(note))
+          me.write_nl(sprintf('\\parbox[t]{%fcm}{', wid_cm));
+        end
         img_fname = sprintf('img%03d.png', me.img_ctr);
         me.write(sprintf('\\includegraphics[width=%fcm,keepaspectratio]{%s}\n', wid_cm, img_fname));
+        if (~isempty(note))
+          me.writeln();
+          me.writeln(note);
+          me.writeln('}');
+        end
         ncplot.save(fig, [me.tmp_dir '\' img_fname]);
       end
     end

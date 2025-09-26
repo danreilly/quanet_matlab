@@ -91,7 +91,7 @@ classdef qna2_cal_class < nc.qna2_class
    end
 
 
-   function cal_save_flash(me)
+   function save_cfg_in_flash(me)
      me.ser.do_cmd(['cfg write' char(13)]);
    end
      

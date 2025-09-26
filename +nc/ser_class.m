@@ -58,6 +58,8 @@ classdef ser_class < handle
     dbg_ctr
     do_cmd_bug_responses
     is_ser % 1=local com port   0=remote serlink port
+    is_tcp % 1=tcp port
+    is_serlink % 
 %    cpdsser OBSOLETE
 %    cpdsfib OBSOLETE
     timo
@@ -70,6 +72,7 @@ classdef ser_class < handle
     cmd_timo_ms
     cmd_term_char % command termination character. Usually '>'.
     cmd_strip_echo
+    cmd_rsp_col_sep
 
     bridge_objs %  vector of objects (devices) to bridge through
     bridge_chans % vector of "bridge channels". The "bridge channel"
@@ -86,6 +89,10 @@ classdef ser_class < handle
     parseline_i % for parseline
     parseline_str
     sersharecli
+    tcpcli
+    tcpport
+    tcp_rx_pend
+    errmsg;
   end
 
   methods (Static=true)
@@ -137,9 +144,14 @@ classdef ser_class < handle
       SER_CLASS_G=1;
     end
 
-    function m = parse_matrix(str) % static
-      % NOTE: no longer skips first line
+    function m = parse_matrix(str, col_sep) % static
+    % DESC: parses string as a matrix.
+    %       columns are separated by col_sep, rows by CR.
       m=[];
+      if (nargin<2)
+        col_sep=' ';
+      end
+      key = sprintf('[^%c]+', col_sep);
       idxs=regexp(str, '\n');
       if (isempty(idxs))
         return;
@@ -148,7 +160,12 @@ classdef ser_class < handle
       r=0; % row
       for k=1:length(idxs)
         ie=idxs(k)-1;
-        [v, ct] = sscanf(str(is:ie), '%g');
+        if (col_sep==' ')
+          [v, ct] = sscanf(str(is:ie), '%g');
+        else % slower
+          v = cellfun(@(s) sscanf(s,'%g'), regexp(str(is:ie), key, 'match'));
+          ct = length(v);
+        end
 % fprintf('  PM: %s -> %g %d', str(is:ie), v, ct);
         if (ct>0)
           r=r+1;
@@ -288,6 +305,7 @@ classdef ser_class < handle
       end
       if (opt.dbg)
         fprintf('DBG: ser_class.parse_keyword_val(%s) ok=%d\n', regexpr,  n);
+        nc.uio.print_all(str);
         fprintf(' %g',  v);
         fprintf('\n');
       end
@@ -396,7 +414,7 @@ classdef ser_class < handle
     function rsp = l_get_rsp(me) 
       % desc: low-level get rsp
       ts=tic();
-      [rsp, ~, to] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
+      [rsp, ~, to, err] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
       if (logical(me.dbg) && to)
         fprintf('WARN: ser_class.do_cmd() timo (after %g ms) on port %s\n', ...
                 me.cmd_timo_ms, me.dbg_alias);
@@ -437,7 +455,7 @@ classdef ser_class < handle
   methods
 
     % CONSTRUCTOR
-    function me = ser_class(portname, baud, opt)
+    function me = ser_class(portname, arg2, opt)
       % desc: Opens the specified local or remote serial port.
       % usage:
       %    ser_class(portname, baud)
@@ -468,14 +486,22 @@ classdef ser_class < handle
         ser_class.init;
       end
 
-      if (nargin<3)
-        if (isstruct(baud))
-          opt = baud;
-          baud = opt.baud;
+      if (nargin==3)
+        opt=arg2;
+      elseif (nargin>1)
+        if (isstruct(arg2))
+          opt = arg2;
+          if (~isfield(opt, 'baud'))
+            baud = 115200;
+          else
+            baud = opt.baud;
+          end
         else
           opt.dbg=0;
+          baud = arg2;
         end
       end
+      
       if (~isfield(opt, 'dbg'))
         opt.dbg=0;
       end
@@ -499,6 +525,7 @@ classdef ser_class < handle
       end
 
       me.idn = [];
+      me.errmsg = '';
       me.dbg = logical(opt.dbg);
       me.dbg_ctr=0;
       me.do_cmd_bug_responses={};
@@ -512,6 +539,7 @@ classdef ser_class < handle
       me.cmd_term_char = '>';
       me.last_bridge_term = 0;
       me.cmd_strip_echo = 1;
+      me.cmd_rsp_col_sep = ' ';
       me.bridge_objs = opt.bridge_objs;
       me.bridge_chans = opt.bridge_chans;
       me.bridge_params = opt.bridge_params;
@@ -528,8 +556,17 @@ classdef ser_class < handle
       end
     end
 
+    function msg=get_errmsg(me)
+      msg = me.errmsg;
+      me.errmsg='';
+    end
+    
     function f=isopen(me)
-      f = (me.port_h>=0);
+      if (me.is_tcp)
+        f = me.tcpcli.isopen();
+      else
+        f = (me.port_h>=0);
+      end
     end
 
     function open(me, portname, opt)
@@ -545,10 +582,11 @@ classdef ser_class < handle
     % inputs:
     %   portname: string. if omitted or '', uses prior.
 %            if nonempty, overrides opt.portname
-%              General format (where square brackets
-%              indicate optional stuff) is:
-%                 [ipaddr:]com#[:[f][s][2]]
-%              Where ipaddr is ipaddress or machine name of sershare server,
+%              General formats (where square brackets
+%              indicate optional stuff) are:
+%                 [ipaddr:]com#
+    %             tcp@ipaddr
+    %              Where ipaddr is ipaddress or machine name of sershare server,
 %              com# is com port name.
 %              Empt string=use prior port
     %   opt: optional structure of options
@@ -559,7 +597,7 @@ classdef ser_class < handle
       if (me.dbg)
         fprintf('DBG %s: ser.open()\n', me.dbg_alias);
       end
-
+      me.errmsg = '';
       if (me.isopen())
         fprintf('WARN: ser_class.open: %s already open\n', me.dbg_alias);
         return;
@@ -619,17 +657,33 @@ classdef ser_class < handle
         return;
       end
       colidxs = strfind(portname, ':');
+      
       portonlyname=portname;
-      me.is_ser=1;
-      if (~isempty(colidxs))
+      me.is_ser=0;
+      me.is_tcp=0;
+      me.is_serlink=0;
+      if (strfind(portname,'tcp@'))
+        me.is_tcp=1;
+        if (isempty(colidxs))
+          ipaddr=portname(5:end);
+          tcpport=1493;
+        else
+          ipaddr=portname(5:(colidxs(1)-1));
+          [tcpport n]=sscanf(portname(colidxs(1)+1:end),'%d',1);
+          if (n==0)
+            tcpport=1493;
+          end
+        end
+      elseif (~isempty(colidxs))
+        me.is_serlink=1;
         % TODO: does not work for ip host names starting with "com"!
         if (strcmpi(portname(1:min(3,(colidxs(1)-1))),'com'))
           portonlyname=portname(1:(colidxs(1)-1));
-        else
-          me.is_ser=0;
         end
+      else
+        me.is_ser=1;        
       end
-
+        
       if (me.is_ser)
 
         [e port_h] = nc.ser_mex(1, portonlyname, baud);
@@ -654,8 +708,19 @@ classdef ser_class < handle
           me.set_bridge_params(me.bridge_params);
         end
 
-        
-      else % open a remote serial port
+      elseif (me.is_tcp)  % open a tcp port
+        me.tcpport = tcpport;
+        me.tcpcli = tcpclient_class(ipaddr, tcpport);
+
+        if (me.tcpcli.isopen())
+          me.tcp_rx_pend='';
+          me.tcpcli.Timeout = 0.001;
+          me.errmsg = '';
+        else
+          me.errmsg = me.tcpcli.get_errmsg();
+        end
+
+      else % open a remote sershare serial port
 
         colidx = colidxs(end);
         ipaddr = portname(1:colidx-1);
@@ -703,6 +768,9 @@ classdef ser_class < handle
           fprintf('WARN: difficulty closing local port, e=%d\n', e);
         end
         me.port_h=-1;
+      elseif (me.is_tcp)
+        me.tcpcli.close();
+        
       else
         e = nc.sershare_mex(8, me.srv_h, me.port_h);
         if (e)
@@ -726,7 +794,8 @@ classdef ser_class < handle
     function e=write(me, str)
     % e: 0=ok, otherise timo or other failure
       import nc.*
-      e=0;             
+      e=0;
+      me.errmsg = '';            
       if (me.isopen)
         if (me.dbg)
           fprintf('DBG %s: write: ', me.dbg_alias);
@@ -734,6 +803,13 @@ classdef ser_class < handle
         end
         if (me.is_ser)
           e = ser_mex(3, me.port_h, str);
+        elseif (me.is_tcp)
+          [n_sent, err] = me.tcpcli.send(uint8(str));
+          e = err || (n_sent ~= length(str));
+          if (e)
+            % fprintf('e %d  actually sent %d\n', e, n_sent); % e is 1??
+            me.errmsg = me.tcpcli.get_errmsg();
+          end
         else
           e = sershare_mex(5, me.srv_h, me.port_h, str);
         end
@@ -786,7 +862,7 @@ classdef ser_class < handle
         me.write(cmd);
         me.l_get_rsp(); % dont bother checking rsp
 
-      else  
+      else
         [bytes_read, ~, ~] = me.skip(200, '');
         if (me.dbg)
           fprintf('DBG %s: flushed %d input bytes.\n', me.dbg_alias, bytes_read);
@@ -801,6 +877,63 @@ classdef ser_class < handle
 %      end
     end
 
+    
+    function [rsp e timo found_key] = tcp_read(me, nchar, timo_s, search_key)
+     %    nchar:= -1=unlimited.  otherwise, max num chars to read    
+      e=0;
+      found_key=0;
+      timo = 0;
+
+      tmp = me.tcp_rx_pend;
+      rl = length(tmp);
+      if (rl)
+        if (nchar>0)
+          rl = min(rl, nchar);
+        end
+        k=strfind(tmp(1:rl), search_key);
+        found_key=~isempty(k);
+        if (found_key)
+          rsp = tmp(1:k);
+          me.tcp_rx_pend = tmp(k+1:end);
+          return;
+        end
+        if ((nchar>0) && (nchar<=rl))
+          rsp = tmp(1:nchar);
+          me.tcp_rx_pend = tmp(nchar+1:end);
+          return;
+        end
+      end
+      
+      rsp = me.tcp_rx_pend;
+      me.tcp_rx_pend='';
+      t_s = tic();
+      
+      while(~e && (nchar~=0) && ~timo)
+        if (nchar>0)
+          rl = max(nchar, 64);
+        else
+          rl = 64;
+        end
+        [data e] = me.tcpcli.recv(rl);
+        if (e)
+          me.errmsg = me.tcpcli.get_errmsg();
+        end
+        tmp = char(data);
+        if (nchar>0)
+          nchar = nchar - length(tmp);
+        end
+        k=strfind(tmp, search_key);
+        found_key=~isempty(k);
+        if (found_key)
+          rsp = [rsp tmp(1:k)];
+          me.tcp_rx_pend = tmp(k+1:end);
+          break;
+        end
+        rsp = [rsp tmp];
+        timo = (toc(t_s)>=timo_s);
+      end
+    end
+    
     function [bytes_read found_key met_timo] = skip(me, timo_ms, search_keys)
       import nc.*
        % reads from device until terminator or timeout
@@ -812,6 +945,9 @@ classdef ser_class < handle
       elseif (me.is_ser)
         [~, bytes_read, found_key, met_timo] = ...
           ser_mex(5, me.port_h, -1, timo_ms, search_keys);
+      elseif (me.is_tcp)
+        [rsp e timo found_key] = me.tcp_read(-1, timo_ms/1000, search_keys);
+        bytes_read = length(rsp);
       else
         % NCHAR is the max num chars to read. (-1 means infinite).
         nchar=-1;
@@ -820,7 +956,7 @@ classdef ser_class < handle
       end
     end
     
-    function [str, found_key met_timo dt] = read(me, nchar, timo_ms, search_keys)
+    function [str, found_key met_timo e dt] = read(me, nchar, timo_ms, search_keys)
    % reads from device until terminator or timeout or nchar chars read.
    %  inputs:
    %    search_keys: string of chars that cause read to terminate
@@ -830,17 +966,19 @@ classdef ser_class < handle
    %   str: string received.
    %   found_key: 1=found one of search_kesy.  0=did not.
    %   met_timo:  1=reached timeout.  0=did not.
+   %   e: err code. 0=no error        
    %   dt: actual time elapsed. added for debug. May be removed in future version!
       import nc.*
       found_key=0;
       met_timo=0;
       str='';
       dt=0;
+      e=0;
       if (~me.isopen)
         return;
       elseif (me.is_ser)
         if (length(search_keys)>1)
-          error('no more');
+          error('BUG: search_keys must be a single character');
         end
 
         [e str nread found_key met_timo dt] = ...
@@ -852,13 +990,18 @@ classdef ser_class < handle
           end
           me.dbg_ctr = me.dbg_ctr+1;
         end
+      elseif (me.is_tcp)
+        [str e met_timo found_key] = me.tcp_read(nchar, timo_ms/1000, search_keys);
+        
       else
         [e str found_key met_timo] = ...
              sershare_mex(6, me.srv_h, me.port_h, nchar, timo_ms, search_keys);
       end
       if (logical(me.dbg) && (~isempty(str) || (me.dbg_ctr<20)))
         if (e)
-          fprintf('DBG %s: read returned e=%d!  met_timo %d\n', e, met_timo);
+          fprintf('DBG %s: read returned e=%d!  met_timo %d\n', ...
+                  me.dbg_alias, e, met_timo);
+          fprintf('    errmsg: %s\n', me.errmsg);
         end
         fprintf('DBG %s: read: ', me.dbg_alias);
         nc.uio.print_all(str);
@@ -932,6 +1075,7 @@ classdef ser_class < handle
           break;
         end
 
+        
         l=length(me.bridge_objs);
         if (me.dbg)
           fprintf('\nDBG %s: ser_class.get_idn_rsp()\n', me.dbg_alias);
@@ -1084,7 +1228,8 @@ classdef ser_class < handle
             ii=idxs(k)+1;
           end
 
-        else
+        else % A "local" identify
+          
           % If the device is in some kind of push-any-key pause loop,
           % then sending it an abitrary char would make the device continue,
           % possibly beginning an action that takes a long time (such as when
@@ -1101,7 +1246,10 @@ classdef ser_class < handle
           e=me.write(['i' char(13)]);
           if (e)
             if (me.dbg)
-              fprintf('DBG %s: write failure!\n');
+              fprintf('DBG %s: write failure, err %d\n', me.dbg_alias, e);
+              if (~isempty(me.errmsg))
+                fprintf('ERR: %s\n', me.errmsg);
+              end
             end
             break;
           end
@@ -1109,8 +1257,13 @@ classdef ser_class < handle
           % After that, the device might respond with valid info,
           % an echo and then valid info, or with garbage.
           while(1)
-            [str found_key to] = me.read(256, 100, char(10));
-            if (to)
+            [str found_key to e] = me.read(256, 200, char(10));
+            if (me.dbg)
+              fprintf('read returned: key %d  to %d  err %d\n', ...
+                      found_key, to, e);
+              uio.print_all(str);
+            end
+            if (to || e)
               break;
             end
             str = regexprep(str,'[\n\r]*','');
@@ -1121,10 +1274,10 @@ classdef ser_class < handle
           end
           if (length(strfind(str,' '))==8)
             pause(0.05);
-            me.flush;
+            me.flush();
             break;
           end
-          me.flush;
+          me.flush();
     
           % Now we expect that the device will recognize 'i' as an identify command.
           % In the case of command-line type interfaces (as opposed to menu type
@@ -1134,8 +1287,8 @@ classdef ser_class < handle
     
           str='';
           while(1)
-            [str found_key to] = me.read(256, 100, char(10));
-            if (to)
+            [str found_key to e] = me.read(256, 200, char(10));
+            if (to || e)
               break;
             end
             str = regexprep(str,'[\n\r]*','');
@@ -1167,24 +1320,28 @@ classdef ser_class < handle
     % called from do_cmd or start_cmd_accum      
       if (me.last_bridge_term ~= ch)
         l = length(me.bridge_objs);
-        [cmd ncmds] = me.bridge_objs(l).bridge_set_term_cmd(me.bridge_chans(l),ch);
-        if (~isempty(cmd))
-          for ci=1:ncmds
-            if (ci>1)
-              cmd='';
+        if (l==0)
+          me.cmd_term_char=ch;
+        else
+          [cmd ncmds] = me.bridge_objs(l).bridge_set_term_cmd(me.bridge_chans(l),ch);
+          if (~isempty(cmd))
+            for ci=1:ncmds
+              if (ci>1)
+                cmd='';
+              end
+              for m=l-1:-1:1
+                % fprintf('DBG: timo %s\n', me.bridge_objs(m).ser.dbg_alias);
+                cmd = me.bridge_objs(m).bridge_cmd(me.bridge_chans(m), cmd);
+              end
+              if (0) % me.dbg)
+                fprintf('DBG %s: ser_class.set_term ncmds %d  ci %d\n  cmd:',  me.dbg_alias, ncmds, ci);
+                nc.uio.print_all(cmd);
+                % fprintf(')\n');
+              end
+              % cant call do_cmd or would recurse forever.
+              me.write(cmd);
+              me.l_get_rsp(); % dont bother checking rsp
             end
-            for m=l-1:-1:1
-              % fprintf('DBG: timo %s\n', me.bridge_objs(m).ser.dbg_alias);
-              cmd = me.bridge_objs(m).bridge_cmd(me.bridge_chans(m), cmd);
-            end
-            if (0) % me.dbg)
-              fprintf('DBG %s: ser_class.set_term ncmds %d  ci %d\n  cmd:',  me.dbg_alias, ncmds, ci);
-              nc.uio.print_all(cmd);
-              % fprintf(')\n');
-            end
-            % cant call do_cmd or would recurse forever.
-            me.write(cmd);
-            me.l_get_rsp(); % dont bother checking rsp
           end
         end
       end
@@ -1226,7 +1383,7 @@ classdef ser_class < handle
         end
         cmd_term = me.cmd_term_char;
       end
-      [rsp found_key to] = me.read(-1, 1000, cmd_term);
+      [rsp found_key to e] = me.read(-1, 1000, cmd_term);
       fcr=0;
       fgt=0;
       if (~isempty(me.bridge_objs))
@@ -1360,14 +1517,16 @@ classdef ser_class < handle
 %   timo: optional.  If omitted, infinite timeout.
 % returns:
 %   rsp
-%   err                      
+%   err: 0=ok, non-zero=error
+        
+      err = 0;
       me.private_start_cmd(cmd);
 
       rsp='';
 
       cmd_ctr=0;
       while (1)
-        [rsp_part, found_key met_timo] = me.read(-1, 1000, me.cmd_term_char);
+        [rsp_part, found_key met_timo err] = me.read(-1, 1000, me.cmd_term_char);
   %     if (DEVS.rsp_to_msg)
   %       msg_no_nl(rsp_part)
   %       drawnow;
@@ -1387,24 +1546,14 @@ classdef ser_class < handle
             break;
           end
         end
-  
+        if (err)
+          break;
+        end
         if ((timo~=inf) && (toc > timo))
-  %        msg_red_nl('ERR: cmd timeout');
           err=1;
           break;
         end
-  %    drawnow;
-  %    if (USER.abort_flag)
-  %      err=1;
-  %      if ((vdi~=DEVS.VEPS)&&(vdi~=DEVS.VCPDS))
-  %$        break;
-  %      end
-  %      if (~aborting)
-  %        dev.abort()
-  %        aborting=1;
-  %      else
-  %        break;
-  %      end
+        
       end
     end
 
@@ -1426,7 +1575,7 @@ classdef ser_class < handle
       [rsp, err] = me.get_cmd_rsp('');
     end
     
-    function [rsp, err] = do_cmd(me, cmd, rsp_need, rsp_err)
+    function [rsp, err, errmsg] = do_cmd(me, cmd, rsp_need, rsp_err)
     % desc: sends cmd to serial device, then reads response until
     %       terminating character '>' is received.  Strips all echos.
     % inputs:
@@ -1450,11 +1599,11 @@ classdef ser_class < handle
       end
       me.private_start_cmd(cmd);
       if (nargin<3)
-        [rsp, err] = me.get_cmd_rsp(cmd);
+        [rsp, err, errmsg] = me.get_cmd_rsp(cmd);
       elseif (nargin<4)
-        [rsp, err] = me.get_cmd_rsp(cmd, rsp_need);
+        [rsp, err, errmsg] = me.get_cmd_rsp(cmd, rsp_need);
       else
-        [rsp, err] = me.get_cmd_rsp(cmd, rsp_need, rsp_err);
+        [rsp, err, errmsg] = me.get_cmd_rsp(cmd, rsp_need, rsp_err);
       end
     end
 
@@ -1473,45 +1622,35 @@ classdef ser_class < handle
     %     me.cmd_nchar
     % returns:
     %     err: 0=ok, 1=missing rsp_need, 2=missing rsp_err, 3=missing '>'
-    %          4=max chars exceeded        
+    %         if err nonzero, errmsg is non-empty and so is ser.errmsg.        
     %     rsp: response as a string
       import nc.*                                   
      
       err=0;
       errmsg='';
 
-      [rsp, found_key, to] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
+      [rsp, ~, to, err] = me.read(me.cmd_nchar, me.cmd_timo_ms, me.cmd_term_char);
+      if (err)
+        errmsg = me.errmsg;
+      end
       
       if (logical(to))
+        tmp = sprintf('timo after %g m', me.cmd_timo_ms);
         if (logical(me.dbg))
-          fprintf('WARN: ser_class.get_cmd_rsp() timo (after %g ms) on port %s\n', ...
-                   me.cmd_timo_ms, me.dbg_alias);
+            fprintf('WARN: %s: ser_class.get_cmd_rsp(): %s\n', ...
+                    me.dbg_alias, tmp);
           fprintf('     cmd was: ');
           uio.print_all(cmd);
           fprintf('     in rsp: ');
           uio.print_all(rsp);
         end
-        err=3;
+        if (~err)
+          err=3;
+          errmsg = tmp;
+          me.errmsg = tmp;
+        end
       end
 
-      if (~to && ~found_key && (me.cmd_nchar>0))
-        fprintf('WARN: ser_class.get_cmd_rsp() read max char %d on port %s\n', ...
-                  me.cmd_nchar, me.dbg_alias);
-        fprintf('     cmd was: ');
-        uio.print_all(cmd);
-        fprintf('     end of rsp: ');
-        uio.print_all(rsp(max(1,end-100):end));
-        err=4;
-      end
-
-      
-      %      fprintf('     cmd was: ');
-      %      uio.print_all(cmd);
-      %      fprintf('     end of rsp: ');
-      %      fprintf('     found key %d   met timo %d  err %d\n', found_key, to, err);
-      %      uio.print_all(rsp(max(1,end-100):end));
-
-      
 
       for k=1:length(me.bridge_objs)
         rsp = me.bridge_objs(k).bridge_rsp(me.bridge_chans(k), rsp);
@@ -1536,39 +1675,41 @@ classdef ser_class < handle
         end
       end
 
-      if (~err)
-        err = ~isempty(errmsg);
-      end
       
       if ((nargin>2)&&~isempty(rsp_need))
         if (isempty(strfind(rsp, rsp_need)))
-          fprintf('ERR: ser_class detects missing ')
-          uio.print_all(rsp_need);
-          fprintf('\n     in rsp ');
+          tmp = sprintf('missing %s in response', sp_need);
+          fprintf('ERR: ser_class: %s:\n', tmp);
           uio.print_all(rsp);
           fprintf('\n');
-          err=1;
+          if (~err)
+            err=1;
+            errmsg = tmp;
+            me.errmsg = tmp;
+          end
         end
       end
       if ((nargin>3)&&~isempty(rsp_err))
         if (~isempty(strfind(rsp, rsp_err)))
-          fprintf('ERR: ser_class found %s\n', rsp_err);
-          fprintf('     in rsp ');
+          tmp = sprintf('found %s in response', rsp_err);
+          fprintf('ERR: ser_class: %s:\n', tmp);
           uio.print_all(rsp);
           fprintf('\n');
-          err=2;
+          if (~err)
+            err=2;
+            errmsg = tmp;
+            me.errmsg = tmp;
+          end
         end
       end
     end
 
     function [m, err] = do_cmd_get_matrix(me, cmd, dflt)
       % inputs:
-      %   dflt: default value if could not parse a matrix
-    % returns:
-    %     err: 0=ok, 1=returned size <> size of dflt if dflt provided,
-    %          3=missing '>'
+    %   dflt: default value if could not parse a matrix
+      err = 0;
       [rsp, err] = do_cmd(me, cmd);
-      m=me.parse_matrix(rsp);
+      m=me.parse_matrix(rsp, me.cmd_rsp_col_sep);
       if (nargin>2)
         if (any(size(m)~=size(dflt)))
           m=dflt;

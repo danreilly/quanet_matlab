@@ -60,6 +60,15 @@ classdef vars_class < handle
 %   vars.save(force);
 %         desc: saves values all variables the file only if any variables have been changed
 %         inputs: force: optional. 1=force writing even if no variables have changed
+
+% DATA STRUCTURE
+%   all this is saved in me.list which is a cell array
+%   each cell array elem is a var strutcure
+%      var.name
+%      var.type  'm'= matrix
+%                's'= string
+%                'c'= cell array
+%      var.m     - value
   
   properties (Constant=true)
 
@@ -68,7 +77,7 @@ classdef vars_class < handle
   % instance members
   properties
     name
-    list
+    list     % cell array of var structures
     dirty
     dbg_lvl  % 0=none, 1=readfile, 2=get
     opt
@@ -230,7 +239,7 @@ classdef vars_class < handle
 
     function clear_vars(me)
       me.dirty=1;
-      list={};
+      me.list={};
     end
 
     function print_err(me, str)
@@ -255,7 +264,7 @@ classdef vars_class < handle
       ln=0;
       
       parse_init();
-%      me.opt.dbg_lvl = 1;
+      me.opt.dbg_lvl = 0;
       
       while (1)
         c = parse_skipspace();
@@ -379,9 +388,9 @@ classdef vars_class < handle
         ok=0;
         row=1;
         ca={};
-        while(1) % cols
+        while(1)
           col=1;
-          while(1) % row
+          while(1) % in a row
             c = parse_skipspace();
             if (~ischar(c) || (c==';') || (c=='}')||(c==char(10)))
               parse_get();
@@ -398,6 +407,17 @@ classdef vars_class < handle
               parse_get();
             end
           end % row
+
+          
+          if (c==';') % skip rest of line
+            while(1)
+              cc=parse_get();
+              if (~ischar(cc) || (cc==char(10)))
+                break;
+              end
+            end
+          end
+                  
           if (c=='}')
             ok=1;
             break;
@@ -658,11 +678,15 @@ classdef vars_class < handle
     end
 
     function set_context(me, dev)
+    % desc: stores boilerplate context information in vars.
+    %       Typically used when using vars_class to save a set of measured data.
+    % inputs:
+    %       dev: A Nucrypt device object.  Some info about the device is saved.
       me.set('date', datestr(now));
       me.set('date_concise', datestr(now,'yymmdd'));
       [~, rsp] = system('hostname');
       me.set('host', regexprep(rsp,['[' 10 13 ']+'],''));
-      if (nargin>1)
+      if ((nargin>1) && ~isempty(dev))
         me.set('dev_name', dev.devinfo.name);
         me.set('serialnum', dev.devinfo.sn);
         me.set('hwver', dev.devinfo.hwver);
@@ -776,8 +800,10 @@ classdef vars_class < handle
       end
       if (isempty(dirname))
         dirname = uigetdir('\', sprintf('... select %s directory', desc));
-        if (isempty(dirname))
+        % returns 0 (double) if nothing chosen          
+        if (isempty(dirname) || ~ischar(dirname))
           fprintf('you chose nothing\n');
+          dirname='';
         else
           fprintf('you chose:\n %s\n', dirname);
         end
@@ -893,9 +919,12 @@ classdef vars_class < handle
     end
 
     function printout(me, f)
+    % f: optoinal.  file to print to.
       import nc.*
       dbg=0;
-      if (nargin<2) f=0; end
+      if (nargin<2)
+        f=1; % print to stdout
+      end
       for k=1:length(me.list)
         var = me.list{k};
         if (~ischar(var.name))
@@ -924,6 +953,12 @@ classdef vars_class < handle
     end
 
 
+    function rng = ask_range(me, prompt, rng_var_name, dflt)
+      rng = me.get(rng_var_name, dflt);
+      fprintf('%s ', prompt);
+      rng = nc.uio.ask_range(rng);
+      me.set(rng_var_name, rng);
+    end
         
                                         
     function ch_wavelens = ask_wavelens_nm(me, rngs_var_name, ch_name, chans, dflt)

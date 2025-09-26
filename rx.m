@@ -1538,7 +1538,7 @@ end
         fclose(fo);
         fprintf('wrote %s\n', fname_out);
       end
-              
+      mvars.save();              
       
       cipher_symlen_asamps = mvars.get('cipher_sylem_asamps', osamp);
       cipher_symlen_s = cipher_symlen_asamps / asamp_Hz;

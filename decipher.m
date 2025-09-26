@@ -9,8 +9,8 @@ function [ii qq] = decipher(ii, qq, mvars, tvars)
   hdr_len_asamps = hdr_len_bits * osamp;
 
   cipher_symlen_asamps = mvars.get('cipher_sylem_asamps', osamp);
-  cipher_m = mvars.get('cipher_m',0); % cipher uses m-psk
-
+  cipher_m = mvars.get('cipher_m',2); % cipher uses m-psk
+cipher_m=2;
   cipher_len_asamps = frame_pd_asamps - hdr_len_asamps;
   cipher_len_bits   = cipher_len_asamps * round(log2(cipher_m)) / ...
       cipher_symlen_asamps;

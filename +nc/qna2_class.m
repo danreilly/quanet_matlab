@@ -16,6 +16,7 @@ classdef qna2_class < nc.ncdev_class
     devinfo
     % Customization and capability information about this QNA
     %   devinfo.num_voa             1,2, etc
+    %   devinfo.num_efpc            1,2, etc
 
     
     settings
@@ -130,6 +131,9 @@ classdef qna2_class < nc.ncdev_class
       else
         error('first param must be portname or ser_class');
       end
+      if (~me.isopen())
+        error('not open');
+      end
     end
 
     % DESTRUCTOR
@@ -197,10 +201,11 @@ classdef qna2_class < nc.ncdev_class
     function ver = get_version_info(me)
       rsp = me.ser.do_cmd(['ver' char(13)]);
       me.devinfo.num_voa  = me.ser.parse_keyword_val(rsp,'num_voa', 0);
-      me.devinfo.num_fpc = me.ser.parse_keyword_val(rsp,'num_efpc', 0);
-      n=me.ser.parse_keyword_val(rsp,'num_wp', 0);
+      me.devinfo.num_efpc = me.ser.parse_keyword_val(rsp,'num_efpc', 0);
+      n   = me.ser.parse_keyword_val(rsp,'num_wp', 0);
+      me.devinfo.num_wp = repmat(n,1,me.devinfo.num_efpc);
+      %      me.devinfo.num_fpc = me.ser.parse_keyword_val(rsp,'num_efpc', 0);
       % num wp stored per PC even though all same for now.
-      me.devinfo.num_wp = repmat(n,1,me.devinfo.num_fpc);
     end
     
     function get_settings(me)
@@ -221,7 +226,7 @@ classdef qna2_class < nc.ncdev_class
       end
       for pc=1:me.devinfo.num_efpc
         key=sprintf('efpc %d', pc);
-        me.settings.efpc_ret_deg = me.ser.parse_keword_val(rsp, key, [0 0 0]);
+        me.settings.efpc_ret_deg = me.ser.parse_keyword_val(rsp, key, [0 0 0]);
       end
       
     end
@@ -248,6 +253,46 @@ classdef qna2_class < nc.ncdev_class
       if (~err && (length(m)==1))
         me.settings.wavelen_nm(ch)=m;
         me.settings.ofreq_MHz(ch)= me.c_mps * 1000 / m;
+      end
+    end
+
+    function set_waveplates_deg(me, chan, wp, rets_deg)
+    % qna2.SET_WAVEPLATES_DEG(chan, wp, rets_deg)
+    % desc:
+    %   Sets retardances of one or more waveplates.
+    %   Generally the retardance range is about 0 to about 450 deg, but this limit
+    %   is device-calibration specific. So for example, if you try setting
+    %   the retardance to 460 deg, it might be clipped to 449 deg, not wrapped to
+    %   90 degrees.  This allows you to exploit any subtle systematic
+    %   difference between lets say 362 degrees vs just 2 degrees.
+    %   After the function returns, your code can check
+    %      pa.settings.waveplates_deg(chan,wp)
+    %   to see what the retardance was actually set to.
+    %   Or more conveniently, the calling code can just take the modulus if
+    %   there's any possibility of the value being out of range, as in:
+    %      pa.SET_WAVEPLATES_DEG(chan, wp, mod(rets_deg,360))
+    % inputs:  
+    %   chan: 1..devinfo.num_chan : specifies channel   (base one)
+    %     wp: 1..3 : specifies starting waveplate   (base one)
+    %    rets_deg: 0..? : vector of retandances (in deg) to set the waveplate to
+    %          range is limited in a device-calibration-specific manner.
+    % changes:
+    %    qna2.settings.waveplates_deg(chan,wp)
+      import nc.*
+      if ((chan<1)||(chan>me.devinfo.num_efpc))
+        error(sprintf('qna2_class.set_waveplates_deg(chan %d): bad efpc\n', chan));
+      end
+      for k=1:length(rets_deg)
+        if ((wp<1)||(wp>me.devinfo.num_wp(chan)))
+          error(sprintf('qna2_class.set_waveplates_deg: waveplate %d nonexistant', wp));
+	end
+        % ret_deg = mod(rets_deg(k),360);
+        ret_deg = rets_deg(k);
+        [m err]=me.ser.do_cmd_get_matrix(sprintf('efpc %d %d %g\r', chan, wp, ret_deg));
+        if (~err && (length(m)==1))
+  	  me.settings.waveplates_deg(chan, wp)=m;
+        end
+        wp=wp+1;
       end
     end
     

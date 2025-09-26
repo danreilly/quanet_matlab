@@ -28,16 +28,128 @@ classdef uio
 
     function pause(msg)
       if (nargin<1)
-	msg='hit enter';
+	 msg='hit enter';
+      else
+          if (~ischar(msg))
+              error('NC:pause:InvalidInput', 'msg must be a string');
+          end
       end
       fprintf('%s >', msg);
       str = input('', 's');
       fprintf('\n');
     end
 
-    function str = dur(n,prec)
-% dur converts a number in seconds
-% to a string with "commensurate" units.
+    function [num units] = str_to_num_and_units(str)
+    % preserves case of units.
+    % returns: num: double, or [] if number unparsable.
+    %          units: '' if none.
+      num=[];
+      units='';
+      [si ei]=regexpi(str,'[\d.+e]+');
+      if (isempty(si))
+        return;
+      end
+      units_ca = regexp(str(ei+1:end),'\S+','match');
+      if (~isempty(units_ca))
+        units = units_ca{1};
+      end
+      [v ct]=sscanf(str(si:ei),'%g');
+      if (ct~=1)
+        return;
+      end
+      num = v;
+    end
+    
+    function v = dur_str2s(s)
+    % returns: double in units of seconds
+      v=[];
+      [v u] = nc.uio.str_to_num_and_units(s);
+      if (isempty(v))
+        return;
+      end
+      if (~isempty(u))
+        u=lower(u);
+        if (u(1)=='f')
+          v=v*1e-15;
+        elseif (u(1)=='p')
+          v=v*1e-12;
+        elseif (u(1)=='n')
+          v=v*1e-9;
+        elseif (u(1)=='u')
+          v=v*1e-6;
+        elseif (strcmp(u,'ms'))
+          v=v*1e-3;
+        elseif (strcmp(u,'s'))
+          v=v*1;
+        elseif (strcmp(u,'min'))
+          v=v*60;
+        elseif (u(1)=='h')
+          v=v*60*60;
+        end
+      end
+    end
+
+
+    function [scale units] = dur_s2units(dur_s)
+    % desc; takes a duration in units of seconds
+    %       returns scale factor and units string
+      n = abs(dur_s);
+      if (n==0)
+	scale = 1;
+        units = 's';
+      elseif (n<1e-12)
+        scale = 1e15;
+        units = 'fs';
+      elseif (n<1e-9)
+        scale = 1e12;
+        units = 'ps';
+      elseif (n<1e-6)
+        scale = 1e9;
+        units = 'ns';
+      elseif (n<1e-3)
+        scale=1e6;
+        units = 'us';
+      elseif (n<1)
+        scale = 1e3;
+        units = 'ms';
+      elseif (n<60)
+        scale = 1;
+        units = 's';
+      elseif (n<60*60)
+        scale = 1/60;
+        units = 'min';
+      else
+        scale = 1/(60*60);
+        units = 'hr';
+      end
+    end
+    
+    function str = dur_s2str(n)
+      f='%g %s';
+      if (n==0)
+	str = '0 s';
+      elseif (abs(n)<1e-12)
+	str = sprintf(f, n*1e15,'fs');
+      elseif (abs(n)<1e-9)
+	str = sprintf(f, n*1e12,'ps');
+      elseif (abs(n)<1e-6)
+	str = sprintf(f, n*1e9, 'ns');
+      elseif (abs(n)<1e-3)
+	str = sprintf(f, n*1e6, 'us');
+      elseif (abs(n)<1)
+	str = sprintf(f, n*1e3, 'ms');
+      elseif (abs(n)<60)
+	str = sprintf(f, n, 's');
+      elseif (abs(n)<60*60)
+	str = sprintf(f, n/60, 'min');
+      else
+	str = sprintf(f, n/(60*60), 'hr');
+      end
+    end
+    
+    function str = dur(n, prec)
+    % desc: dur_s2str converts a number n in seconds
+    %       to a string with "commensurate" units.
       if (nargin<2)
         prec=1;
       end             
@@ -164,6 +276,38 @@ classdef uio
 	t = sprintf(fmt, n);
       end
     end
+
+    function n = sci_str2num(str, default)
+      ca = regexp(str,'([\d.eE+-]+|[a-zA-Z]+)','match');
+      m=1;
+      if (length(ca)>1)
+        if (strncmp(ca{2},'m',1))
+          m=1e-3;
+        elseif (strncmp(ca{2},'u',1))
+          m=1e-6;
+        elseif (strncmp(ca{2},'n',1))
+          m=1e-9;
+        elseif (strncmp(ca{2},'k',1))
+          m=1e3;
+        elseif (strncmp(ca{2},'M',1))
+          m=1e6;
+        elseif (strncmp(ca{2},'G',1))
+          m=1e9;
+        elseif (strncmp(ca{2},'T',1))
+          m=1e12;
+        end
+      end
+      if (length(ca)>0)
+        [v ct]= sscanf(ca{1},'%g');
+        if (length(v)==1)
+          n = v * m;
+  	  return;
+	end
+      end
+      n=default;
+      return
+    end
+
     
     function r=ask_yn(p1, p2)
       % use: ask_yn(prompt, def)
@@ -434,7 +578,17 @@ classdef uio
       end
     end
 
+    function v = range_m2vect(rng)
+      if (length(rng)==1)
+        v = rng;
+      elseif (length(rng)==2)
+        v = [rng(1):rng(2)];
+      else
+        v = [rng(1):rng(2):rng(3)];
+      end
+    end
 
+    
     function str = range_m2str(m)
       if (length(m)>=3)
         str=sprintf('%g:%g:%g', m(1:3));
@@ -554,6 +708,52 @@ classdef uio
       end
     end
 
+
+    function log_matrix(log_f, name, fmt, m)
+    % usage: log_matrix(log_f, name, fmt, m)
+    % desc: Prints a "name = matrix" assignment to a file in matlab "mcode" syntax.
+    %       Matrix is printed as multiple rows of
+    %   numbers separated by spaces. If non-scaler, prints brackets
+    %   around it. Prints a trailing semicolon.
+    % inputs: fmt: sprintf format to be used. If empty, ' %g' is used.
+    %         log_f : 0=none, 1=stdout, else = a handle to an open log file
+      if (log_f<=0)
+        return;
+      end
+      sz = size(m);
+      str = sprintf('%s = ', name);
+      bracketed = ((sz(1)~=1)||(sz(2)~=1));
+      if (bracketed)
+        str=[str '['];
+      end
+      if (isempty(fmt))
+        fmt=' %g';
+      end
+      fprintf(log_f, str);
+
+      if (~sz(1)||~sz(2))
+        fprintf(log_f,'];\r\n');
+        return;
+      end
+      
+      l = length(str);
+      str = repmat(' ', 1, l);
+      
+      for k=1:sz(1)
+        if (k>1)
+          fprintf(log_f, str);
+        end
+        fprintf(log_f, fmt, m(k,:));
+        if (k==sz(1))
+          if (bracketed)
+	    fprintf(log_f,']');
+          end
+          fprintf(log_f,';');
+        end
+        fprintf(log_f,'\r\n');
+      end
+    end
+    
     function print_wrap(str, w)
       if (nargin<2)
 	    w = 80;
@@ -597,6 +797,11 @@ classdef uio
       fprintf('"\n');
     end
 
+    function str = esc_backslash(str)
+      str = regexprep(str,'\\','\\\\');
+    end
+
+    
   end
   
   methods

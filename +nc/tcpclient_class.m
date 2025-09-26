@@ -23,6 +23,7 @@ classdef tcpclient_class < handle
 
     % CONSTRUCTOR
     function me = tcpclient_class(ipaddr, port)
+      import nc.*
       % desc: Opens the specified local or remote serial port.
       % inputs:
       [me.err soc_h] = nc.tcpclient_mex(0, ipaddr, port);
@@ -47,6 +48,7 @@ classdef tcpclient_class < handle
 
     % PROPERTY SET METHODS
     function set.Timeout(me, timo_s)
+      import nc.*
       me.Timeout = timo_s;
       err = nc.tcpclient_mex(3, me.soc_h, 'Timeout', timo_s);
       if (err)
@@ -55,19 +57,23 @@ classdef tcpclient_class < handle
     end
     
     function str = get_errmsg(me)
+      import nc.*
       str = nc.tcpclient_mex(6);
     end
     
     function close(me)
+      import nc.*
       err = nc.tcpclient_mex(4, me.soc_h);
       me.soc_h=-1;
     end
     
     function [n_sent, err]= send(me, data)
+      import nc.*
       [n_sent, err]= nc.tcpclient_mex(1, me.soc_h, typecast(data(:).','uint8'));
     end
 
     function [data err] = recv(me, nobjs, classstr)
+      import nc.*
     % data will be uint8.  TIP: use typecast()
       if (~isnumeric(nobjs))
         error('tcpclient_classs.recv(nobjs, classstr): nobjs must be numeric');

@@ -127,6 +127,9 @@ classdef qna1_class < nc.ncdev_class
       else
         error('first param must be portname or ser_class');
       end
+      if (~me.isopen())
+        error('not open');
+      end
     end
 
     % DESTRUCTOR

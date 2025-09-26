@@ -1,6 +1,6 @@
 // tcpclient.c
 // client code for accessing a remote "serial port sharer" server.
-// Dan Reilly 7/20/2016
+// Dan Reilly 8/9/2024
 
 
 
@@ -10,7 +10,7 @@
 // NOTE: c++ complains about sprintf, and mex complains about sprintf_s!
 #endif
 
-
+//#include <Windows.h>
 #include <Winsock2.h>
 #include <Ws2tcpip.h> // for getaddrinfo?
 #include <string.h>
@@ -209,7 +209,7 @@ extern int tcpclient_connect(char *ipaddr, int tcpport, int *con_h) {
     sa_p = (struct sockaddr_in *)p->ai_addr;
     // inet_ntoa(struct in_addr) converts struct in_addr to asci string.
     sprintf(log_msg, "  ipaddr resolved to %s\n", inet_ntoa(sa_p->sin_addr));
-    log_func(log_msg);
+    tcpclient_log(TCPCLIENT_LOG_INFO,log_msg);
 
     memcpy(&addr.s_addr, &sa_p->sin_addr, sizeof(struct in_addr));
 
@@ -273,7 +273,7 @@ int tcpclient_send(int con_h, char *buf, int *n_bytes) {
   tcpclient_con_t *con = con_get_open(con_h);
   if (!con) {
     *n_bytes=0;
-    return -1;
+    return tcpclient_log(LOG_ERR, "invalid socket handle"); // 8/9/24
   }
   my_sprintf(log_msg, LOG_MSG_LEN, "wr %d", *n_bytes);
   tcpclient_log(LOG_DBG, log_msg);
